@@ -1,0 +1,95 @@
+flowchart TD
+    APP["SwiftStore<br/>Next.js · Svelte · Native"]
+
+    APP --> E1 & E2 & E3
+
+    E1["localhost:9000<br/>Local Dev"]
+    E2["fbs.domain.com<br/>Self-Hosted"]
+    E3["s3.amazonaws.com<br/>Production AWS"]
+
+    E3 --> AWS_S3[("AWS S3 — External<br/>SwiftStore not involved")]
+    E2 --> CF["Cloudflare Tunnel<br/>TLS · Free Egress · DDoS"]
+    E1 & CF --> ROUTER["HTTP Router — chi"]
+
+    ROUTER --> SIGV4 & BEARER & CDN_PATH
+
+    SIGV4["AWS Sig V4<br/>S3 Path"] --> S3_API
+    BEARER["Bearer Token<br/>Mgmt Path"] --> MGMT_API
+
+    subgraph PARALLEL["Parallel Processing Paths"]
+        direction LR
+
+        subgraph S3_API["S3 API — AWS Compatible"]
+            direction TB
+            S3_OBJ["Object Ops<br/>PUT · GET · DELETE · HEAD · LIST"]
+            S3_BKT["Bucket Ops<br/>PUT · DELETE · LIST"]
+            S3_MULTI["Multipart Upload"]
+            S3_PRE["Presigned URLs"]
+        end
+
+        subgraph MGMT_API["Management API — Bearer Auth"]
+            direction TB
+            M_BROWSE["Bucket + Object Browser"]
+            M_KEYS["Key Management"]
+            M_STATS["Stats + Log Stream"]
+            M_SCHEMA["Schema Registry — Phase 2"]
+            M_QUERY["Metadata Query — Phase 2"]
+        end
+
+        subgraph CDN_PATH["CDN Path — Public Unauthenticated"]
+            direction TB
+            BCACHE["Browser Cache<br/>immutable · ETag · 304"]
+            LRU["LRU Cache<br/>512MB byte-budget"]
+            STREAM["Disk Stream<br/>range requests · video"]
+        end
+    end
+
+    subgraph STORAGE["Storage Engine + SQLite WAL"]
+        direction LR
+        S_WRITE["Write<br/>temp · SHA256 · atomic rename"]
+        S_READ["Read<br/>data_path · fd lookup"]
+        S_DEL["Delete<br/>SQLite row · file · evict"]
+        DB_OBJ["objects<br/>key · etag · size · metadata JSON"]
+        DB_BKT["buckets<br/>name · public"]
+        DB_KEYS["keys<br/>access_key · secret_hash"]
+        DB_SCH["schemas — Phase 2<br/>bucket · field · type"]
+    end
+
+    S3_OBJ & S3_BKT & S3_MULTI & S3_PRE --> S_WRITE & S_READ & S_DEL
+    M_BROWSE --> DB_OBJ & DB_BKT
+    M_KEYS --> DB_KEYS
+    M_SCHEMA --> DB_SCH
+    M_QUERY --> DB_OBJ
+    DB_SCH -->|validate on write| S_WRITE
+    LRU -->|miss| S_READ -->|populate| LRU
+    STREAM --> S_READ
+    S_WRITE --> DB_OBJ & DB_BKT
+
+    STORAGE --> DISK[("Docker Volume<br/>./data:/data<br/>/data/buckets · /data/meta.db")]
+    STORAGE -.-> LOGS["Logs — zerolog stdout<br/>Loki + Grafana"]
+
+    classDef app fill:#0f1a0f,stroke:#22c55e,color:#bbf7d0,font-weight:bold
+    classDef endpoint fill:#0c1a2e,stroke:#0ea5e9,color:#bae6fd
+    classDef cf fill:#1a1200,stroke:#f59e0b,color:#fef3c7
+    classDef router fill:#1e1b4b,stroke:#8b5cf6,color:#e0d9ff,font-weight:bold
+    classDef s3api fill:#1e1b4b,stroke:#8b5cf6,color:#e0d9ff
+    classDef mgmt fill:#0d1f1f,stroke:#14b8a6,color:#99f6e4
+    classDef cdn fill:#0c1a2e,stroke:#0ea5e9,color:#bae6fd
+    classDef storage fill:#052e16,stroke:#10b981,color:#bbf7d0
+    classDef disk fill:#1c1917,stroke:#64748b,color:#e2e8f0
+    classDef logs fill:#1c1917,stroke:#475569,color:#cbd5e1
+    classDef aws fill:#1a0f00,stroke:#f97316,color:#fed7aa
+    classDef phase2 fill:#1a0a2e,stroke:#a855f7,color:#e9d5ff
+
+    class APP app
+    class E1,E2,E3 endpoint
+    class CF cf
+    class ROUTER,SIGV4,BEARER router
+    class S3_API,S3_OBJ,S3_BKT,S3_MULTI,S3_PRE s3api
+    class MGMT_API,M_BROWSE,M_KEYS,M_STATS mgmt
+    class M_SCHEMA,M_QUERY,DB_SCH phase2
+    class CDN_PATH,BCACHE,LRU,STREAM cdn
+    class STORAGE,S_WRITE,S_READ,S_DEL,DB_OBJ,DB_BKT,DB_KEYS storage
+    class DISK disk
+    class LOGS logs
+    class AWS_S3 aws
