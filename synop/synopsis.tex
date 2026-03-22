@@ -1,0 +1,249 @@
+\documentclass[12pt,a4paper]{report}
+\usepackage[top=1in, bottom=1in, left=1.5in, right=1in]{geometry}
+\usepackage{times}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{float}
+\usepackage{setspace}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{microtype}
+\usepackage{titlesec}
+
+% Change "Contents" to "CONTENTS OF SYNOPSIS" and format the TOC
+\renewcommand{\contentsname}{\centering CONTENTS OF SYNOPSIS}
+
+% Format section titles
+\titleformat{\section}[block]{\normalfont\Large\bfseries\centering}{\thesection.}{0.5em}{}
+
+% Redefine section numbering to just be 1, 2, 3 instead of 0.1, 0.2 (since we removed chapters)
+\renewcommand{\thesection}{\arabic{section}}
+
+\tolerance=1000
+\emergencystretch=3em
+
+\onehalfspacing
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyfoot[L]{\thepage\ $|$ \small FBS: Fast Blob Storage}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0.4pt}
+
+\fancypagestyle{plain}{
+  \fancyhf{}
+  \fancyfoot[L]{\thepage\ $|$ \small FBS: Fast Blob Storage}
+  \renewcommand{\headrulewidth}{0pt}
+  \renewcommand{\footrulewidth}{0.4pt}
+}
+
+\begin{document}
+
+\begin{titlepage}
+\begin{center}
+\vspace*{1.5cm}
+
+{\fontsize{18}{22}\selectfont \textbf{FBS: FAST BLOB STORAGE}}
+
+\vspace{1.5cm}
+
+{\fontsize{14}{16}\selectfont A MINI PROJECT SYNOPSIS SUBMITTED}\\
+\vspace{0.2cm}
+{\fontsize{14}{16}\selectfont IN PARTIAL FULFILLMENT OF THE REQUIREMENTS}\\
+\vspace{0.2cm}
+{\fontsize{14}{16}\selectfont FOR THE AWARD OF DEGREE OF}\\
+\vspace{1cm}
+
+{\fontsize{16}{18}\selectfont \textbf{BACHELOR OF TECHNOLOGY}}\\
+\vspace{0.2cm}
+{\fontsize{14}{16}\selectfont In}\\
+\vspace{0.2cm}
+{\fontsize{16}{18}\selectfont \textbf{COMPUTER SCIENCE AND ENGINEERING}}
+
+\vspace{1.5cm}
+
+{\fontsize{14}{16}\selectfont \textbf{SUBMITTED BY}}\\
+\vspace{0.5cm}
+{\fontsize{14}{16}\selectfont Radhey Kalra (Roll Number: 2023A1R044)}\\
+\vspace{0.2cm}
+{\fontsize{14}{16}\selectfont Raghav Nargotra (Roll Number: 033)}\\
+\vspace{0.2cm}
+{\fontsize{14}{16}\selectfont Sheershak Sharma (Roll Number: 004)}
+
+\vspace{0.8cm}
+\includegraphics[width=6cm]{logo.png}
+\vspace{0.8cm}
+
+{\fontsize{14}{16}\selectfont \textbf{SUBMITTED TO}}\\
+\vspace{0.5cm}
+{\fontsize{14}{16}\selectfont \textbf{Department of Computer Science and Engineering}}\\
+\vspace{0.2cm}
+{\fontsize{14}{16}\selectfont \textbf{Model Institute of Engineering and Technology (Autonomous)}}\\
+\vspace{0.2cm}
+{\fontsize{14}{16}\selectfont \textbf{Jammu, India}}
+
+\vspace{1.5cm}
+
+{\fontsize{16}{18}\selectfont \textbf{2026}}
+
+\end{center}
+\end{titlepage}
+
+\newpage
+\thispagestyle{empty}
+\tableofcontents
+
+\newpage
+\pagenumbering{arabic}
+\setcounter{page}{1}
+
+\section{Project Overview}
+Cloud object storage, led by Amazon S3, has become the standard for scalable data storage in modern computing. Virtually every cloud provider and many open-source projects implement S3-compatible interfaces, enabling portable applications that switch between backends without code changes. This project presents a lightweight, self-hosted S3-compatible storage ecosystem optimized for single-node deployments. The system consists of a high-performance Go backend with SQLite metadata, a SvelteKit web dashboard, and an OpenTUI terminal dashboard. It targets homelab enthusiasts, developers, and small teams who require S3 storage without commercial cloud dependencies or the overhead of heavyweight solutions like MinIO.
+
+\section{Problem Statement}
+Current self-hosted S3 solutions fail to adequately serve single-node, resource-constrained deployments. MinIO, while production-grade, requires significant memory and is architected for distributed clusters, making it impractical for homelabs on Raspberry Pi or low-end VPS instances. Simpler alternatives sacrifice S3 SDK compatibility, breaking standard AWS CLI, SDKs, and tooling that expect strict AWS signing algorithms and proper error responses. Many lack multipart upload support for large files, risking data corruption. Egress paths are unoptimized, involving excessive kernel-to-user-space copies. Additionally, administrative interfaces are tightly coupled to the storage server, offering no flexibility for users who prefer web GUI over terminal workflows.
+\newpage
+\section{Objectives of the Project}
+\begin{itemize}
+\item \textbf{Design} a decoupled system architecture separating the storage engine, management API, and dashboard components to enable independent development, testing, and deployment.
+\item \textbf{Develop} a high-performance Go backend implementing the complete S3 API with object operations (PUT, GET, DELETE, HEAD), bucket listing (ListObjectsV2), and multipart uploads, with dual-mode authentication (AWS SigV4 and Bearer Token).
+\item \textbf{Implement} a SQLite-based metadata layer with WAL mode, atomic write guarantees, and an in-memory LRU cache for hot metadata queries to minimize disk I/O.
+\item \textbf{Optimize} data egress paths using sendfile() for zero-copy transfers, CDN-friendly caching headers, and a Go memory LRU cache to maximize throughput on commodity hardware.
+\item \textbf{Demonstrate} the complete ecosystem by building a SvelteKit web dashboard and an OpenTUI terminal dashboard connected to the backend via the Management API.
+\end{itemize}
+\newpage
+
+\section{Proposed Solution / Methodology}
+The system follows a decoupled microservices-inspired architecture with three independent components communicating over HTTP. Figure 1 shows the complete architecture.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=1.1\textwidth]{flow.png}
+\caption{System Architecture of the FBS: Fast Blob Storage}
+\label{fig:architecture}
+\end{figure}
+
+The \textbf{Go backend} forms the core, handling all S3 operations and exposing two endpoint groups: the S3 API for object storage and the Management API for administration. The \texttt{chi} router handles routing with middleware for logging, panic recovery, and CORS. The storage engine writes to \texttt{.tmp/UUID} before atomic rename to \texttt{/data/\{bucket\}/\{key\}}. SQLite with WAL mode tracks metadata across four tables: \texttt{buckets}, \texttt{objects}, \texttt{multipart\_uploads}, and \texttt{keys}.
+
+The \textbf{web dashboard} (SvelteKit + TypeScript + TailwindCSS) connects via Management API, providing a metrics overview, file browser, and access key manager. The \textbf{terminal dashboard} (OpenTUI) offers a split-pane file explorer, object metadata views, and real-time metric charts with vim-style keyboard navigation.
+
+Dual-mode authentication serves both SDK clients (AWS SigV4 signature verification) and simpler use cases (Bearer Token for dashboards and scripts). A \texttt{--dev} flag bypasses auth for local development.
+
+\section{Key Technologies and Tools}
+\begin{table}[H]
+\centering
+\begin{tabular}{|p{4.5cm}|p{10cm}|}
+\toprule
+\textbf{Tool} & \textbf{Description} \\
+\midrule
+Go (Golang) & Backend server implementation; goroutines for concurrency, native HTTP performance \\
+\midrule
+chi Router & Lightweight HTTP routing with middleware support \\
+\midrule
+SQLite (WAL Mode) & Embedded metadata storage; WAL enables concurrent reads during writes \\
+\midrule
+HashiCorp LRU & In-memory cache for hot metadata queries and frequently accessed objects \\
+\midrule
+SvelteKit + TypeScript + TailwindCSS & Web dashboard; file-based routing, SSR, responsive UI \\
+\midrule
+OpenTUI & Terminal dashboard; declarative TUI components in TypeScript \\
+\midrule
+Docker & Backend containerization with volume mounts for persistent storage \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{V.E.T.S Justification}
+
+\vspace{0.3cm}
+\noindent \textbf{V - Viability}\\
+The project is highly feasible within the available timeframe and resources. The Go backend compiles to a single static binary with no external runtime dependencies, deployable via a single command. SQLite requires no server process or database administration. The estimated memory footprint is under 50 MB for the backend and sub-100 MB per dashboard, making deployment viable on Raspberry Pi, low-end VPS, and container environments.
+
+\vspace{0.5cm}
+\noindent \textbf{E - Engineering Depth}\\
+The project spans multiple engineering disciplines. The S3 API implementation requires deep understanding of AWS SigV4 signing (canonical request reconstruction, HMAC-SHA256), HTTP semantics, XML response formatting, and S3 error code conventions. The storage engine involves atomic file operations and directory structure management. The SQLite layer demands schema design, WAL concurrency tuning, and query optimization. Egress uses Linux \texttt{sendfile()} syscalls for zero-copy transfers.
+
+\vspace{0.5cm}
+\noindent \textbf{T - Trend Alignment}\\
+The project aligns with the growing self-hosted and homelab movement driven by privacy concerns, cost optimization, and desire for infrastructure control. It follows the cloud-native, API-first design philosophy that dominates modern distributed systems development. The TypeScript-unified stack across web and CLI tooling reflects the industry trend toward full-stack JavaScript/TypeScript ecosystems.
+
+\vspace{0.5cm}
+\noindent \textbf{S - Social / Industrial Impact}\\
+Homelab enthusiasts gain an accessible, lightweight S3 target for home media servers and self-hosted application stacks. Small teams benefit from a cost-effective alternative to commercial cloud storage, eliminating per-GB egress charges while retaining S3 tooling compatibility. Educational institutions can use it as a hands-on platform for teaching distributed systems, cloud storage concepts, and API design.
+
+\section{Expected Outcomes}
+\begin{itemize}
+\item A fully functional Go-based S3-compatible storage server as a drop-in replacement for AWS S3.
+\item Complete S3 API compliance for object CRUD, bucket listing, and multipart uploads, validated against the official AWS SDK.
+\item Dual authentication: AWS SigV4 verification passing official test suites, and Bearer Token auth for dashboards.
+\item A decoupled Management API with RESTful JSON endpoints.
+\item A SvelteKit web dashboard for graphical administration and file management.
+\item An OpenTUI terminal dashboard for keyboard-driven CLI management.
+\item Egress optimizations including zero-copy transfers, LRU metadata cache, and HTTP caching headers.
+\end{itemize}
+
+\section{Implementation Timeline}
+\begin{table}[H]
+\centering
+\begin{tabular}{|p{2cm}|p{12.5cm}|}
+\toprule
+\textbf{Phase} & \textbf{Activity} \\
+\midrule
+Phase 1 & Problem analysis and requirement study (Core HTTP Server \& Routing, SQLite Metadata Layer, Disk Storage Engine) \\
+\midrule
+Phase 2 & System design and architecture (Auth Framework, Bearer Tokens, Basic S3 Object Operations) \\
+\midrule
+Phase 3 & Implementation and module development (AWS SigV4 Auth, Bucket Operations, Management API) \\
+\midrule
+Phase 4 & Testing and evaluation (Multipart Uploads, Egress Caching Optimizations, Building Web \& CLI Dashboards) \\
+\midrule
+Phase 5 & Documentation and final presentation (End-to-end integration, Bug Fixes, Docker setup, Release) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\renewcommand{\bibname}{\centering \normalfont\Large\bfseries 9. References}
+\begin{thebibliography}{99}
+
+\bibitem{aws-s3}
+Amazon Web Services, ``Amazon S3 API Reference [Online]. Available: \url{https://docs.aws.amazon.com/AmazonS3/latest/API/Welcome.html}
+
+\bibitem{minio}
+MinIO, Inc., ``MinIO Object Storage [Online]. Available: \url{https://min.io}
+
+\bibitem{sigv4}
+Amazon Web Services, ``Authenticating Requests: Using Query Parameters (AWS Signature Version 4) [Online]. Available: \url{https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-query-string-auth.html}
+
+\bibitem{go}
+The Go Authors, ``The Go Programming Language [Online]. Available: \url{https://go.dev}
+
+\bibitem{chi}
+Go-Chi, ``chi --- lightweight, idiomatic router for Go [Online]. Available: \url{https://github.com/go-chi/chi}
+
+\bibitem{sqlite}
+SQLite Consortium, ``Write-Ahead Logging [Online]. Available: \url{https://www.sqlite.org/wal.html}
+
+\bibitem{sveltekit}
+Svelte Team, ``SvelteKit [Online]. Available: \url{https://kit.svelte.dev}
+
+\bibitem{opentui}
+OpenTUI, ``Terminal UI Library for TypeScript [Online]. Available: \url{https://github.com/anomalyco/opentui}
+
+\bibitem{sendfile}
+Linux Kernel, ``sendfile(2) --- transfer data between file descriptors. [Online]. Available: \url{https://man7.org/linux/man-pages/man2/sendfile.2.html}
+
+\bibitem{hashicorp-lru}
+HashiCorp, ``golang-lru --- Golang LRU cache implementation [Online]. Available: \url{https://github.com/hashicorp/golang-lru}
+
+\bibitem{garage}
+Deuxfleurs, ``Garage --- An open-source distributed object storage service [Online]. Available: \url{https://garagehq.deuxfleurs.fr}
+
+\end{thebibliography}
+
+\end{document}

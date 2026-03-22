@@ -1,0 +1,83 @@
+---
+config:
+  layout: elk
+---
+flowchart TB
+ subgraph AUTH_LAYER["Authentication Layer (Dual Mode)"]
+    direction LR
+        SIGV4["AWS SigV4<br>Strict SDK Compat"]
+        BEARER["Bearer Token<br>Homelab / Simple"]
+        DEV_MODE["--dev Flag<br>Bypass Auth"]
+  end
+ subgraph S3_API["S3 API — AWS Compatible"]
+    direction TB
+        S3_OBJ["Object Ops<br>PUT · GET · DELETE · HEAD"]
+        S3_BKT["Bucket Ops<br>LIST (ListObjectsV2)"]
+        S3_MULTI["Multipart Upload<br>Init · UploadPart · Complete"]
+  end
+ subgraph MGMT_API["Management API"]
+    direction TB
+        M_KEYS["Key / Token Management"]
+        M_BROWSE["Bucket / Object Browser"]
+  end
+ subgraph CDN_PATH["CDN / Egress Path"]
+    direction TB
+        BCACHE["Browser / CF Cache<br>Cache-Control · ETag"]
+        META_LRU["Metadata LRU Cache<br>Hot SQLite Rows (Go Memory)"]
+        OS_CACHE["OS Page Cache<br>Zero-Copy · sendfile()"]
+  end
+ subgraph STORAGE["Storage Engine (SQLite WAL + Disk)"]
+    direction LR
+        S_WRITE["Atomic Write<br>.tmp/UUID -&gt; rename"]
+        S_READ["Direct Read<br>Human Readable Paths"]
+        S_DEL["Delete<br>Soft Delete / Versioning"]
+        DB_META["SQLite WAL Metadata<br>Versioning · ETags · Auth"]
+  end
+    APP["Client Applications"] --> E1["localhost:9000<br>Local Dev (Auth Bypass Optional)"] & E2["fbs.domain.com<br>Self-Hosted (Cloudflare Tunnel)"] & E3["Amazon S3"]
+    E1 --> ROUTER["HTTP Router — chi"]
+    E2 --> ROUTER
+    ROUTER --> AUTH_LAYER
+    AUTH_LAYER --> S3_API & CDN_PATH & MGMT_API
+    S3_API --> STORAGE
+    MGMT_API --> STORAGE
+    CDN_PATH --> STORAGE
+    S_WRITE --> DB_META
+    META_LRU --> DB_META
+    S_READ --> OS_CACHE
+    S_DEL --> DB_META
+    STORAGE --> DISK[("Local Disk / Docker Volume<br>/data/{bucket_name}/{object_key}<br>/data/meta.db")]
+
+     SIGV4:::auth
+     BEARER:::auth
+     DEV_MODE:::auth
+     S3_OBJ:::api
+     S3_BKT:::api
+     S3_MULTI:::api
+     M_KEYS:::api
+     M_BROWSE:::api
+     BCACHE:::cdn
+     META_LRU:::cdn
+     OS_CACHE:::cdn
+     S_WRITE:::storage
+     S_READ:::storage
+     S_DEL:::storage
+     DB_META:::storage
+     APP:::app
+     E1:::endpoint
+     E2:::endpoint
+     E3:::endpoint
+     ROUTER:::router
+     AUTH_LAYER:::auth
+     S3_API:::api
+     CDN_PATH:::cdn
+     MGMT_API:::api
+     STORAGE:::storage
+     DISK:::disk
+    classDef app fill:#0f1a0f,stroke:#22c55e,color:#bbf7d0,font-weight:bold
+    classDef endpoint fill:#0c1a2e,stroke:#0ea5e9,color:#bae6fd
+    classDef router fill:#1e1b4b,stroke:#8b5cf6,color:#e0d9ff,font-weight:bold
+    classDef auth fill:#1a1200,stroke:#f59e0b,color:#fef3c7
+    classDef api fill:#0d1f1f,stroke:#14b8a6,color:#99f6e4
+    classDef cdn fill:#0c1a2e,stroke:#0ea5e9,color:#bae6fd
+    classDef storage fill:#052e16,stroke:#10b981,color:#bbf7d0
+    classDef disk fill:#1c1917,stroke:#64748b,color:#e2e8f02
