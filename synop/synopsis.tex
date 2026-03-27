@@ -104,17 +104,25 @@
 \setcounter{page}{1}
 
 \section{Project Overview}
-Cloud object storage, led by Amazon S3, has become the standard for scalable data storage in modern computing. Virtually every cloud provider and many open-source projects implement S3-compatible interfaces, enabling portable applications that switch between backends without code changes. This project presents a lightweight, self-hosted S3-compatible storage ecosystem optimized for single-node deployments. The system consists of a high-performance Go backend with SQLite metadata, a SvelteKit web dashboard, and an OpenTUI terminal dashboard. It targets homelab enthusiasts, developers, and small teams who require S3 storage without commercial cloud dependencies or the overhead of heavyweight solutions like MinIO.
+The S3 API, originally introduced by Amazon Web Services, has become the de facto interface for object storage in modern computing. From mobile app backends to machine learning pipelines, applications universally assume an S3-compatible endpoint for storing and retrieving unstructured data. Simultaneously, the self-hosting movement has accelerated: driven by privacy concerns, unpredictable cloud egress costs, and the desire for infrastructure sovereignty, a growing number of developers and hobbyists now run production workloads on single-node hardware --- Raspberry Pis, NUCs, and low-end VPS instances. These users need S3-compatible storage, but every existing solution forces a choice between enterprise systems designed for multi-node clusters and lightweight mocks built only for testing. This project presents FBS (Fast Blob Storage), a self-hosted, S3-compatible storage ecosystem that fills this gap: a single-binary Go backend with SQLite metadata, optimized specifically for single-node deployments, paired with a decoupled SvelteKit web dashboard and an OpenTUI terminal dashboard. It targets homelab enthusiasts, developers, and small teams who need production-grade S3 storage without commercial cloud dependencies or the operational overhead of distributed systems.
 
 \section{Problem Statement}
-Current self-hosted S3 solutions fail to adequately serve single-node, resource-constrained deployments. MinIO, while production-grade, requires significant memory and is architected for distributed clusters, making it impractical for homelabs on Raspberry Pi or low-end VPS instances. Simpler alternatives sacrifice S3 SDK compatibility, breaking standard AWS CLI, SDKs, and tooling that expect strict AWS signing algorithms and proper error responses. Many lack multipart upload support for large files, risking data corruption. Egress paths are unoptimized, involving excessive kernel-to-user-space copies. Additionally, administrative interfaces are tightly coupled to the storage server, offering no flexibility for users who prefer web GUI over terminal workflows.
-\newpage
+Existing self-hosted S3-compatible storage solutions fall into two categories, neither of which adequately serves single-node, resource-constrained deployments.
+
+\textbf{Overengineered distributed systems.} Production-grade solutions such as MinIO, Garage, and SeaweedFS are architected for multi-node clusters and carry that overhead even on a single machine. MinIO requires a minimum of four drives for erasure coding, writes a separate metadata file for every object (doubling disk I/O), and consumes 300--500\,MB of RAM at idle. SeaweedFS requires coordinating six separate processes --- master server, volume server, filer, S3 gateway, WebDAV server, and admin UI --- even for a single-node deployment. Garage requires configuring an RPC secret, assigning a cluster layout with zones and capacity, and runs a gossip protocol between nodes even when there is only one. In all three cases, the user pays a significant complexity and resource cost for distributed-system machinery they do not need.
+
+\textbf{Underengineered testing mocks.} Lightweight alternatives such as GoFakeS3, Adobe S3Mock, and s3proxy are explicitly designed for local development and integration testing. GoFakeS3 stores objects in memory by default and states it ``should not be used as a production service.'' Adobe S3Mock deletes all stored data on shutdown unless manually overridden. These tools lack authentication, upload checksum validation, crash recovery, and multipart upload lifecycle management. They do not sanitize object keys against path traversal attacks and store credentials (if any) in plaintext configuration.
+
+\textbf{The gap.} No existing solution is simultaneously production-usable (persistent storage, authentication, data integrity guarantees), single-binary with zero external dependencies (no separate database server, no multi-process coordination), optimized for single-node performance (zero-copy egress, minimal memory footprint), and equipped with decoupled administrative interfaces (independent web and terminal dashboards that connect remotely). The user is forced to choose between systems that are too heavy for their hardware and tools that are too fragile for their data.
+% \newpage
 \section{Objectives of the Project}
 \begin{itemize}
 \item \textbf{Design} a decoupled system architecture separating the storage engine, management API, and dashboard components to enable independent development, testing, and deployment.
 \item \textbf{Develop} a high-performance Go backend implementing the complete S3 API with object operations (PUT, GET, DELETE, HEAD), bucket listing (ListObjectsV2), and multipart uploads, with dual-mode authentication (AWS SigV4 and Bearer Token).
 \item \textbf{Implement} a SQLite-based metadata layer with WAL mode, atomic write guarantees, and an in-memory LRU cache for hot metadata queries to minimize disk I/O.
-\item \textbf{Optimize} data egress paths using sendfile() for zero-copy transfers, CDN-friendly caching headers, and a Go memory LRU cache to maximize throughput on commodity hardware.
+\item \textbf{Ensure} data integrity through a defined write ordering (data-before-metadata), startup reconciliation of orphaned files, upload checksum validation, and automated cleanup of stale multipart uploads.
+\item \textbf{Secure} the system with object key path sanitization to prevent directory traversal attacks, SHA-256 hashed token storage, and restricted authentication bypass in development mode.
+\item \textbf{Optimize} data egress paths using sendfile() for zero-copy transfers with a dedicated minimal middleware chain, CDN-friendly caching headers, and a Go memory LRU cache to maximize throughput on commodity hardware.
 \item \textbf{Demonstrate} the complete ecosystem by building a SvelteKit web dashboard and an OpenTUI terminal dashboard connected to the backend via the Management API.
 \end{itemize}
 \newpage
@@ -129,11 +137,17 @@ The system follows a decoupled microservices-inspired architecture with three in
 \label{fig:architecture}
 \end{figure}
 
-The \textbf{Go backend} forms the core, handling all S3 operations and exposing two endpoint groups: the S3 API for object storage and the Management API for administration. The \texttt{chi} router handles routing with middleware for logging, panic recovery, and CORS. The storage engine writes to \texttt{.tmp/UUID} before atomic rename to \texttt{/data/\{bucket\}/\{key\}}. SQLite with WAL mode tracks metadata across four tables: \texttt{buckets}, \texttt{objects}, \texttt{multipart\_uploads}, and \texttt{keys}.
+The \textbf{Go backend} forms the core, handling all S3 operations and exposing two endpoint groups: the S3 API for object storage and the Management API for administration. The \texttt{chi} router handles routing with middleware for logging, panic recovery, and CORS. The S3 \texttt{GET} path uses a separate, minimal middleware chain to preserve the \texttt{io.ReaderFrom} interface on the response writer, enabling \texttt{sendfile()} zero-copy transfers; \texttt{http.ServeContent()} handles range requests, ETag, and Last-Modified in a single call.
+
+The storage engine enforces a strict \textbf{data-before-metadata write order}: objects are first written to \texttt{.tmp/UUID}, atomically renamed to \texttt{/data/\{bucket\}/\{key\}}, and only then is metadata inserted into SQLite. This makes SQLite the single source of truth --- if a metadata row does not exist, the object does not exist. On server startup, a \textbf{reconciliation pass} purges incomplete files from \texttt{.tmp/} and removes any orphaned data files that lack a corresponding metadata row, ensuring self-healing after crashes. All object keys undergo \textbf{path sanitization}: keys containing traversal sequences (\texttt{../}), null bytes, or filesystem-invalid characters are rejected, and intermediate directories are created as needed for keys containing \texttt{/}.
+
+Upload integrity is enforced through a \textbf{checksum validation pipeline}: \texttt{Content-MD5} and \texttt{x-amz-checksum-*} headers are verified on upload using a \texttt{TeeReader} that hashes data as it streams to disk, rejecting mismatches before metadata is committed. The computed MD5 is stored as the object's ETag. A \textbf{background goroutine} periodically purges multipart uploads older than a configurable TTL (default 24 hours), reclaiming disk space from abandoned uploads.
+
+SQLite with WAL mode tracks metadata across four tables: \texttt{buckets}, \texttt{objects}, \texttt{multipart\_uploads}, and \texttt{keys}, tuned with \texttt{synchronous=NORMAL} and \texttt{busy\_timeout=5000} for optimal single-node write throughput.
 
 The \textbf{web dashboard} (SvelteKit + TypeScript + TailwindCSS) connects via Management API, providing a metrics overview, file browser, and access key manager. The \textbf{terminal dashboard} (OpenTUI) offers a split-pane file explorer, object metadata views, and real-time metric charts with vim-style keyboard navigation.
 
-Dual-mode authentication serves both SDK clients (AWS SigV4 signature verification) and simpler use cases (Bearer Token for dashboards and scripts). A \texttt{--dev} flag bypasses auth for local development.
+Dual-mode authentication serves both SDK clients (AWS SigV4 signature verification) and simpler use cases (Bearer Token for dashboards and scripts). Bearer tokens are stored as \textbf{SHA-256 hashes} in SQLite --- raw tokens are returned to the user once at creation time and never persisted. A \texttt{--dev} flag bypasses authentication but is restricted to \texttt{localhost} binding only and logs a startup warning.
 
 \section{Key Technologies and Tools}
 \begin{table}[H]
@@ -167,7 +181,7 @@ The project is highly feasible within the available timeframe and resources. The
 
 \vspace{0.5cm}
 \noindent \textbf{E - Engineering Depth}\\
-The project spans multiple engineering disciplines. The S3 API implementation requires deep understanding of AWS SigV4 signing (canonical request reconstruction, HMAC-SHA256), HTTP semantics, XML response formatting, and S3 error code conventions. The storage engine involves atomic file operations and directory structure management. The SQLite layer demands schema design, WAL concurrency tuning, and query optimization. Egress uses Linux \texttt{sendfile()} syscalls for zero-copy transfers.
+The project spans multiple engineering disciplines. The S3 API implementation requires deep understanding of AWS SigV4 signing (canonical request reconstruction, HMAC-SHA256), HTTP semantics, XML response formatting, and S3 error code conventions. The storage engine involves atomic file operations, directory structure management, path sanitization against traversal attacks, and a data-before-metadata write ordering with startup reconciliation to guarantee consistency between the filesystem and SQLite. Upload integrity is enforced through a TeeReader checksum pipeline validating Content-MD5 at wire speed. The SQLite layer demands schema design, WAL concurrency tuning (\texttt{synchronous=NORMAL}, \texttt{busy\_timeout}), and query optimization. Credential security uses SHA-256 token hashing rather than plaintext storage. Egress uses Linux \texttt{sendfile()} syscalls for zero-copy transfers, requiring careful middleware chain design to preserve the \texttt{io.ReaderFrom} interface on the response writer.
 
 \vspace{0.5cm}
 \noindent \textbf{T - Trend Alignment}\\
@@ -181,11 +195,13 @@ Homelab enthusiasts gain an accessible, lightweight S3 target for home media ser
 \begin{itemize}
 \item A fully functional Go-based S3-compatible storage server as a drop-in replacement for AWS S3.
 \item Complete S3 API compliance for object CRUD, bucket listing, and multipart uploads, validated against the official AWS SDK.
-\item Dual authentication: AWS SigV4 verification passing official test suites, and Bearer Token auth for dashboards.
+\item Dual authentication: AWS SigV4 verification passing official test suites, and Bearer Token auth (SHA-256 hashed storage) for dashboards.
+\item Data integrity guarantees through data-before-metadata write ordering, startup reconciliation of orphaned files, upload checksum validation, and automated stale multipart cleanup.
+\item Security hardening including object key path sanitization against directory traversal, hashed credential storage, and restricted development mode.
 \item A decoupled Management API with RESTful JSON endpoints.
 \item A SvelteKit web dashboard for graphical administration and file management.
 \item An OpenTUI terminal dashboard for keyboard-driven CLI management.
-\item Egress optimizations including zero-copy transfers, LRU metadata cache, and HTTP caching headers.
+\item Egress optimizations including zero-copy transfers via a dedicated minimal middleware chain, LRU metadata cache, and HTTP caching headers.
 \end{itemize}
 
 \section{Implementation Timeline}
