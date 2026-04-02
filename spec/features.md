@@ -6,8 +6,9 @@ This document defines the discrete features required to build the S3-Compatible 
 **Owner:** [Unassigned]
 - Set up the Go project structure.
 - Implement the HTTP router using `chi`.
-- Configure dual endpoints (`localhost:9000` and ingress config).
+- Configure a default local listener on `localhost:9000` plus configurable bind and public URL settings for ingress deployments.
 - Add foundational middleware (logging, panic recovery, CORS).
+- Add original router and server tests covering health endpoints, 404 behavior, CORS preflight, and panic recovery.
 
 ## F2: SQLite Metadata Layer (Backend)
 **Owner:** [Unassigned]
@@ -44,17 +45,20 @@ This document defines the discrete features required to build the S3-Compatible 
 - Ensure standard XML/JSON S3 error formatting.
 - On `PUT`: validate `Content-MD5` and `x-amz-checksum-*` headers using a `TeeReader` hash pipeline. Reject uploads with mismatched checksums before committing metadata. Store the computed MD5 as the object's ETag.
 - On `GET`/`HEAD`: return `ETag`, `Content-Length`, and `Last-Modified` headers from stored metadata.
+- Add original black-box S3 compatibility tests for `PUT`, `GET`, `DELETE`, and `HEAD`, asserting protocol behavior rather than internal implementation details.
 
 ## F7: S3 API - Bucket Operations (Backend)
 **Owner:** [Unassigned]
 - Implement `ListObjectsV2` endpoint.
 - Query the SQLite metadata layer to return paginated directory structures.
+- Add black-box compatibility tests for `ListObjectsV2`, including pagination and prefix or delimiter behavior.
 
 ## F8: S3 API - Multipart Uploads (Backend)
 **Owner:** [Unassigned]
 - Implement endpoints: `CreateMultipartUpload`, `UploadPart`, `CompleteMultipartUpload`, `AbortMultipartUpload`.
 - Manage temporary parts on disk and track state in SQLite.
 - Implement a background goroutine that periodically purges multipart uploads older than a configurable TTL (default 24h), deleting both the on-disk parts and the SQLite tracking rows.
+- Add original black-box multipart flow tests for initiate, upload part, complete, and abort behavior.
 
 ## F9: Egress & Caching Optimizations (Backend)
 **Owner:** [Unassigned]
@@ -67,6 +71,7 @@ This document defines the discrete features required to build the S3-Compatible 
 **Owner:** [Unassigned]
 - Expose RESTful JSON endpoints for Bucket/Object browsing, metrics, and Key management.
 - Ensure robust CORS and Bearer Token authentication for remote dashboard connections.
+- Add API contract tests for management endpoints, including CORS and auth behavior for remote dashboards.
 
 ## F11: Web Dashboard (Frontend)
 **Owner:** [Unassigned]

@@ -27,6 +27,12 @@ This system is a self-hosted, lightweight object storage ecosystem. It provides 
 - **Bucket Operations:** `LIST` (ListObjectsV2)
 - **Multipart Uploads:** `CreateMultipartUpload`, `UploadPart`, `CompleteMultipartUpload`
 
+## 3.1 Testing & Compatibility Strategy
+- The system targets AWS S3-compatible behavior, validated primarily through black-box HTTP and API tests.
+- Test scenarios may be inspired by established S3-compatible servers, but tests in this repository must be written originally and not copied verbatim from third-party projects.
+- Preference is given to protocol-level compatibility checks such as status codes, headers, XML bodies, ETag behavior, range requests, multipart flows, and auth flows over implementation-coupled tests.
+- External compatibility suites and AWS CLI or SDK smoke tests may be run in CI or local validation as separate tools, without vendoring third-party AGPL test code into this repository.
+
 ## 4. Data Integrity & Consistency
 - **Write Order:** Data is written to disk first (`.tmp/UUID` → rename), metadata inserted into SQLite second. SQLite is the single source of truth — if a row doesn't exist, the object doesn't exist.
 - **Startup Reconciliation:** On server boot, purge incomplete files from `.tmp/` and remove orphaned data files that have no matching SQLite metadata row.
