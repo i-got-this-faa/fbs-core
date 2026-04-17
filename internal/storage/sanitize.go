@@ -6,8 +6,8 @@ import (
 	"unicode/utf8"
 )
 
-func ValidateKey (key string) error {
-	if key == ""{
+func ValidateKey(key string) error {
+	if key == "" {
 		return ErrInvalidKey
 	}
 
@@ -15,61 +15,63 @@ func ValidateKey (key string) error {
 		return ErrInvalidKey
 	}
 
-	if key == "." || key ==".."{
+	if key == "." || key == ".." {
 		return ErrInvalidKey
 	}
 
-	if strings.HasPrefix(key , "/"){
+	if strings.HasPrefix(key, "/") {
 		return ErrInvalidKey
 	}
 
-	if strings.Contains(key,"\x00"){
+	if strings.Contains(key, "\x00") {
 		return ErrInvalidKey
 	}
 
-	if strings.Contains(key,"\n" ) || strings.Contains(key,"\r"){
+	if strings.Contains(key, "\n") || strings.Contains(key, "\r") {
 		return ErrInvalidKey
 	}
 
-	if strings.Contains(key , "../" )|| strings.Contains(key , "..\\"){
+	if containsTraversalSegment(key) {
+		return ErrPathTraversal
+	}
+
+	if !utf8.ValidString(key) {
 		return ErrInvalidKey
 	}
 
-	if !utf8.ValidString(key){
+	cleaned := filepath.Clean(key)
+	if cleaned == "." || cleaned == "" {
 		return ErrInvalidKey
 	}
 
-	return nil 
+	return nil
 }
 
-
-func (e *engine) StoragePath (bucketName , key string) string {
-	return filepath.Join(bucketName,filepath.Clean(key))
+func (e *engine) StoragePath(bucketName, key string) string {
+	return filepath.Join(bucketName, filepath.Clean(key))
 }
 
-func (e *engine) resolveKeyPath (bucketName , key string) (storagePath string , fullPath string , err error){
+func (e *engine) resolveKeyPath(bucketName, key string) (storagePath string, fullPath string, err error) {
 	bucketName = strings.TrimSpace(bucketName)
-	
+
 	if bucketName == "" {
-		return "" , "" , ErrInvalidKey
+		return "", "", ErrInvalidKey
 	}
 
-	if err := ValidateKey(key) ; err != nil {
-		return "" , "" , ErrInvalidKey
+	if err := ValidateKey(key); err != nil {
+		return "", "", err
 	}
 
-	storagePath = e.StoragePath(bucketName ,key)
-	fullPath = filepath.Clean(filepath.Join(e.dataDir , storagePath))
+	storagePath = e.StoragePath(bucketName, key)
+	fullPath = filepath.Clean(filepath.Join(e.dataDir, storagePath))
 
-	if !isWithinBase(e.dataDir ,fullPath){
-		return "" , "" , ErrInvalidKey 
+	if !isWithinBase(e.dataDir, fullPath) {
+		return "", "", ErrPathTraversal
 	}
 
-	return storagePath , fullPath ,nil
+	return storagePath, fullPath, nil
 
 }
-
-
 
 func (e *engine) resolveStoragePath(storagePath string) (string, error) {
 	if strings.TrimSpace(storagePath) == "" {
@@ -85,7 +87,6 @@ func (e *engine) resolveStoragePath(storagePath string) (string, error) {
 	}
 	return fullPath, nil
 }
-
 
 func isWithinBase(base, target string) bool {
 	absBase, err := filepath.Abs(base)
@@ -107,4 +108,14 @@ func isWithinBase(base, target string) bool {
 		return false
 	}
 	return true
+}
+
+func containsTraversalSegment(key string) bool {
+	normalized := strings.ReplaceAll(key, "\\", "/")
+	for _, part := range strings.Split(normalized, "/") {
+		if part == ".." {
+			return true
+		}
+	}
+	return false
 }

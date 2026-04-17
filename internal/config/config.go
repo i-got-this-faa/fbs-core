@@ -11,6 +11,7 @@ import (
 
 const (
 	defaultHTTPAddr        = "127.0.0.1:9000"
+	defaultDataDir         = "./data"
 	defaultReadTimeout     = 15 * time.Second
 	defaultWriteTimeout    = 30 * time.Second
 	defaultIdleTimeout     = 60 * time.Second
@@ -26,6 +27,7 @@ var defaultCORSAllowedOrigins = []string{
 
 type Config struct {
 	HTTPAddr           string
+	DataDir            string
 	PublicBaseURL      string
 	CORSAllowedOrigins []string
 	ReadTimeout        time.Duration
@@ -37,6 +39,7 @@ type Config struct {
 func Default() Config {
 	return Config{
 		HTTPAddr:           defaultHTTPAddr,
+		DataDir:            defaultDataDir,
 		CORSAllowedOrigins: append([]string(nil), defaultCORSAllowedOrigins...),
 		ReadTimeout:        defaultReadTimeout,
 		WriteTimeout:       defaultWriteTimeout,
@@ -70,6 +73,7 @@ func Load() (Config, error) {
 
 	flagSet := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 	httpAddr := flagSet.String("http-addr", envOrDefault("FBS_HTTP_ADDR", defaults.HTTPAddr), "HTTP listen address")
+	dataDir := flagSet.String("data-dir", envOrDefault("FBS_DATA_DIR", defaults.DataDir), "Data root directory")
 	publicBaseURL := flagSet.String("public-base-url", envOrDefault("FBS_PUBLIC_BASE_URL", defaults.PublicBaseURL), "Public base URL for ingress deployments")
 	corsAllowedOrigins := flagSet.String(
 		"cors-allowed-origins",
@@ -87,6 +91,7 @@ func Load() (Config, error) {
 
 	cfg := Config{
 		HTTPAddr:           strings.TrimSpace(*httpAddr),
+		DataDir:            strings.TrimSpace(*dataDir),
 		PublicBaseURL:      strings.TrimSpace(*publicBaseURL),
 		CORSAllowedOrigins: splitCSV(*corsAllowedOrigins),
 		ReadTimeout:        readTimeout,
@@ -105,6 +110,10 @@ func Load() (Config, error) {
 func (c Config) Validate() error {
 	if c.HTTPAddr == "" {
 		return fmt.Errorf("http address is required")
+	}
+
+	if c.DataDir == "" {
+		return fmt.Errorf("data directory is required")
 	}
 
 	if c.PublicBaseURL != "" {

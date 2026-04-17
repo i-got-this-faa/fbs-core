@@ -1,13 +1,16 @@
 package storage
+
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
 func TestWriteReadDeleteLifecycle(t *testing.T) {
 	t.Parallel()
 	eng, err := New(t.TempDir())
@@ -77,6 +80,34 @@ func TestWriteCanceledContext(t *testing.T) {
 		t.Fatalf("Write() error = %v, want %v", err, context.Canceled)
 	}
 }
+
+func TestAtomicWriteFailureCleansTempFile(t *testing.T) {
+	t.Parallel()
+
+	eng, err := New(t.TempDir())
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	_, _, err = eng.Write(context.Background(), "docs", "broken.txt", &failingReader{failAfter: 1})
+	if err == nil {
+		t.Fatal("Write() error = nil, want failure")
+	}
+
+	entries, err := os.ReadDir(eng.tmpDir)
+	if err != nil {
+		t.Fatalf("ReadDir(tmpDir) error = %v", err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("tmpDir entries = %d, want 0", len(entries))
+	}
+
+	_, statErr := os.Stat(filepath.Join(eng.dataDir, "docs", "broken.txt"))
+	if !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("final file stat error = %v, want %v", statErr, os.ErrNotExist)
+	}
+}
+
 func TestReadNotFound(t *testing.T) {
 	t.Parallel()
 	eng, err := New(t.TempDir())
@@ -122,4 +153,18 @@ func TestOpenNotFound(t *testing.T) {
 	if !errors.Is(err, ErrNotFound) {
 		t.Fatalf("Open() error = %v, want %v", err, ErrNotFound)
 	}
+}
+
+type failingReader struct {
+	reads     int
+	failAfter int
+}
+
+func (r *failingReader) Read(p []byte) (int, error) {
+	if r.reads >= r.failAfter {
+		return 0, fmt.Errorf("forced read failure")
+	}
+	r.reads++
+	copy(p, "x")
+	return 1, nil
 }

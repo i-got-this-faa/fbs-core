@@ -10,6 +10,7 @@ import (
 	"github.com/i-got-this-faa/fbs/internal/config"
 	httpapi "github.com/i-got-this-faa/fbs/internal/http"
 	"github.com/i-got-this-faa/fbs/internal/server"
+	"github.com/i-got-this-faa/fbs/internal/storage"
 )
 
 func main() {
@@ -18,6 +19,11 @@ func main() {
 	cfg, err := config.Load()
 	if err != nil {
 		logger.Error("failed to load config", "error", err)
+		os.Exit(1)
+	}
+
+	if _, err := storage.New(cfg.DataDir); err != nil {
+		logger.Error("failed to initialize storage engine", "error", err)
 		os.Exit(1)
 	}
 
@@ -35,6 +41,7 @@ func main() {
 	logger.Info(
 		"starting server",
 		"http_addr", cfg.HTTPAddr,
+		"data_dir", cfg.DataDir,
 		"public_base_url", cfg.PublicBaseURL,
 		"cors_allowed_origins", cfg.CORSAllowedOrigins,
 	)
