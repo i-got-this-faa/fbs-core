@@ -47,16 +47,21 @@ func (r *sqliteObjectRepository) Create(ctx context.Context, obj *Object) error 
 		INSERT INTO objects (id, bucket_name, key, size, etag, content_type, storage_path, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(bucket_name, key) DO UPDATE SET
+			id = excluded.id,
 			size = excluded.size,
 			etag = excluded.etag,
 			content_type = excluded.content_type,
 			storage_path = excluded.storage_path,
+			created_at = excluded.created_at,
 			updated_at = excluded.updated_at`
 
-	now := obj.CreatedAt.UTC()
-	if obj.UpdatedAt.IsZero() {
-		obj.UpdatedAt = now
+	if obj.CreatedAt.IsZero() {
+		obj.CreatedAt = time.Now().UTC()
 	}
+	if obj.UpdatedAt.IsZero() {
+		obj.UpdatedAt = obj.CreatedAt
+	}
+	now := obj.CreatedAt.UTC()
 
 	_, err := r.db.ExecContext(ctx, q,
 		obj.ID,
@@ -87,19 +92,25 @@ func (r *sqliteObjectRepository) GetByKey(ctx context.Context, bucketName, key s
 }
 
 func (r *sqliteObjectRepository) List(ctx context.Context, bucketName, prefix, startAfter string, maxKeys int) ([]Object, bool, error) {
-	// Simple pagination using startAfter which serves as a lexicographical marker for Key
+	if maxKeys <= 0 {
+		return []Object{}, false, nil
+	}
+
 	q := `
 		SELECT id, bucket_name, key, size, etag, content_type, storage_path, created_at, updated_at
 		FROM objects
-		WHERE bucket_name = ? AND key > ? AND key LIKE ?
-		ORDER BY key ASC
-		LIMIT ?`
+		WHERE bucket_name = ? AND key > ?`
+	args := []any{bucketName, startAfter}
+	if prefix != "" {
+		q += ` AND substr(key, 1, length(?)) = ?`
+		args = append(args, prefix, prefix)
+	}
+	q += ` ORDER BY key ASC LIMIT ?`
 
-	// maxKeys+1 to determine if there are more (isTruncated)
 	limit := maxKeys + 1
-	likePrefix := prefix + "%"
+	args = append(args, limit)
 
-	rows, err := r.db.QueryContext(ctx, q, bucketName, startAfter, likePrefix, limit)
+	rows, err := r.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, false, fmt.Errorf("list objects: %w", err)
 	}

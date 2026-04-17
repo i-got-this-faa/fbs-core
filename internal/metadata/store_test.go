@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"context"
+	"database/sql"
 	"path/filepath"
 	"testing"
 	"time"
@@ -16,8 +17,8 @@ func TestOpenDB(t *testing.T) {
 		t.Fatalf("Open failed: %v", err)
 	}
 	defer db.Close()
+	db.SetMaxOpenConns(2)
 
-	// Test that pragmas were applied
 	var journalMode string
 	if err := db.QueryRow("PRAGMA journal_mode").Scan(&journalMode); err != nil {
 		t.Fatalf("query journal mode: %v", err)
@@ -26,18 +27,49 @@ func TestOpenDB(t *testing.T) {
 		t.Errorf("expected journal mode 'wal', got %q", journalMode)
 	}
 
+	ctx := context.Background()
+	conn1, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatalf("db.Conn 1: %v", err)
+	}
+	defer conn1.Close()
+
+	conn2, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatalf("db.Conn 2: %v", err)
+	}
+	defer conn2.Close()
+
+	assertConnectionPragmas(t, conn1)
+	assertConnectionPragmas(t, conn2)
+}
+
+func assertConnectionPragmas(t *testing.T, conn interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}) {
+	t.Helper()
+
+	ctx := context.Background()
 	var busyTimeout int
-	if err := db.QueryRow("PRAGMA busy_timeout").Scan(&busyTimeout); err != nil {
+	if err := conn.QueryRowContext(ctx, "PRAGMA busy_timeout").Scan(&busyTimeout); err != nil {
 		t.Fatalf("query busy timeout: %v", err)
 	}
 	if busyTimeout != 5000 {
-		t.Errorf("expected busy timeout 5000, got %d", busyTimeout)
+		t.Fatalf("expected busy timeout 5000, got %d", busyTimeout)
+	}
+
+	var foreignKeys int
+	if err := conn.QueryRowContext(ctx, "PRAGMA foreign_keys").Scan(&foreignKeys); err != nil {
+		t.Fatalf("query foreign_keys: %v", err)
+	}
+	if foreignKeys != 1 {
+		t.Fatalf("expected foreign_keys = 1, got %d", foreignKeys)
 	}
 }
 
 func TestMigrations(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "fbs_migrate.db")
-	
+
 	// First run creates tables
 	db1, err := Open(dbPath)
 	if err != nil {
@@ -109,6 +141,8 @@ func TestListStaleUpsert(t *testing.T) {
 
 	obj.Size = 200
 	obj.ETag = "v2"
+	obj.ID = uuid.NewString()
+	obj.CreatedAt = obj.CreatedAt.Add(time.Hour)
 	if err := objRepo.Create(ctx, obj); err != nil {
 		t.Fatalf("obj create v2 (upsert): %v", err)
 	}
@@ -119,6 +153,9 @@ func TestListStaleUpsert(t *testing.T) {
 	}
 	if gotObj.Size != 200 || gotObj.ETag != "v2" {
 		t.Errorf("expected upserted size 200/etag v2, got size %d/etag %v", gotObj.Size, gotObj.ETag)
+	}
+	if gotObj.ID != obj.ID {
+		t.Errorf("expected upserted id %s, got %s", obj.ID, gotObj.ID)
 	}
 
 	// 2. Test List Stale

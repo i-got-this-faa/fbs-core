@@ -47,7 +47,7 @@ func insertTestBucket(t *testing.T, db *sql.DB) string {
 	ownerID := insertTestUser(t, db)
 	repo := NewBucketRepository(db)
 	b := newTestBucket(ownerID)
-	
+
 	if err := repo.Create(context.Background(), b); err != nil {
 		t.Fatalf("insertTestBucket: %v", err)
 	}
@@ -124,7 +124,7 @@ func TestMultipartUploadListStale(t *testing.T) {
 	ctx := context.Background()
 
 	bucketName := insertTestBucket(t, db)
-	
+
 	// Create old upload
 	oldUpload := newTestMultipartUpload(bucketName)
 	oldUpload.CreatedAt = time.Now().UTC().Add(-48 * time.Hour).Truncate(time.Second)
@@ -181,9 +181,45 @@ func TestMultipartPartAddList(t *testing.T) {
 	if len(parts) != 2 {
 		t.Fatalf("expected 2 parts, got %d", len(parts))
 	}
-	
+
 	if parts[0].PartNumber != 1 || parts[1].PartNumber != 2 {
 		t.Errorf("parts not ordered correctly: %v", parts)
+	}
+}
+
+func TestMultipartPartAdd_ReplacesExistingPart(t *testing.T) {
+	db := openTestDBWithMultiparts(t)
+	repo := NewMultipartUploadRepository(db)
+	ctx := context.Background()
+
+	bucketName := insertTestBucket(t, db)
+	upload := newTestMultipartUpload(bucketName)
+	if err := repo.Create(ctx, upload); err != nil {
+		t.Fatalf("Create upload: %v", err)
+	}
+
+	part := newTestMultipartPart(upload.ID, 1)
+	if err := repo.AddPart(ctx, part); err != nil {
+		t.Fatalf("AddPart initial: %v", err)
+	}
+
+	part.Size = 2048
+	part.ETag = "updated-etag"
+	part.StoragePath = "data/replaced"
+	part.CreatedAt = part.CreatedAt.Add(time.Minute)
+	if err := repo.AddPart(ctx, part); err != nil {
+		t.Fatalf("AddPart replace: %v", err)
+	}
+
+	parts, err := repo.ListParts(ctx, upload.ID)
+	if err != nil {
+		t.Fatalf("ListParts: %v", err)
+	}
+	if len(parts) != 1 {
+		t.Fatalf("expected 1 part, got %d", len(parts))
+	}
+	if parts[0].Size != 2048 || parts[0].ETag != "updated-etag" || parts[0].StoragePath != "data/replaced" {
+		t.Fatalf("unexpected replaced part: %+v", parts[0])
 	}
 }
 

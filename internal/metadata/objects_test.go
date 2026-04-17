@@ -88,8 +88,12 @@ func TestObjectUpsert(t *testing.T) {
 	}
 
 	// Change some fields and create again (should update)
+	updatedID := uuid.NewString()
+	updatedCreatedAt := obj.CreatedAt.Add(time.Hour)
+	obj.ID = updatedID
 	obj.Size = 4096
 	obj.ETag = "new-etag"
+	obj.CreatedAt = updatedCreatedAt
 	if err := repo.Create(ctx, obj); err != nil {
 		t.Fatalf("Create (upsert): %v", err)
 	}
@@ -101,6 +105,12 @@ func TestObjectUpsert(t *testing.T) {
 
 	if got.Size != 4096 || got.ETag != "new-etag" {
 		t.Errorf("upsert failed, got size=%d, etag=%s", got.Size, got.ETag)
+	}
+	if got.ID != updatedID {
+		t.Errorf("upsert failed to replace id, got %s want %s", got.ID, updatedID)
+	}
+	if !got.CreatedAt.Equal(updatedCreatedAt) {
+		t.Errorf("upsert failed to replace created_at, got %v want %v", got.CreatedAt, updatedCreatedAt)
 	}
 }
 
@@ -152,7 +162,7 @@ func TestObjectList(t *testing.T) {
 	ctx := context.Background()
 
 	bucketName := insertTestBucket(t, db)
-	
+
 	objects := []string{
 		"a.txt",
 		"b/1.txt",
@@ -199,5 +209,41 @@ func TestObjectList(t *testing.T) {
 	}
 	if results2[0].Key != "b/2.txt" || results2[1].Key != "c.txt" {
 		t.Errorf("unexpected results: %v", results)
+	}
+}
+
+func TestObjectList_PrefixWithWildcards(t *testing.T) {
+	db := openTestDBWithObjects(t)
+	repo := NewObjectRepository(db)
+	ctx := context.Background()
+
+	bucketName := insertTestBucket(t, db)
+	for _, key := range []string{"a%b.txt", "a_b.txt", "axb.txt"} {
+		obj := newTestObject(bucketName, key)
+		if err := repo.Create(ctx, obj); err != nil {
+			t.Fatalf("Create %s: %v", key, err)
+		}
+	}
+
+	results, isTruncated, err := repo.List(ctx, bucketName, "a%", "", 10)
+	if err != nil {
+		t.Fatalf("List wildcard prefix: %v", err)
+	}
+	if isTruncated {
+		t.Fatal("expected wildcard prefix list to not be truncated")
+	}
+	if len(results) != 1 || results[0].Key != "a%b.txt" {
+		t.Fatalf("unexpected wildcard prefix results: %+v", results)
+	}
+
+	results, isTruncated, err = repo.List(ctx, bucketName, "a_", "", 10)
+	if err != nil {
+		t.Fatalf("List underscore prefix: %v", err)
+	}
+	if isTruncated {
+		t.Fatal("expected underscore prefix list to not be truncated")
+	}
+	if len(results) != 1 || results[0].Key != "a_b.txt" {
+		t.Fatalf("unexpected underscore prefix results: %+v", results)
 	}
 }

@@ -127,7 +127,16 @@ func (r *sqliteMultipartUploadRepository) ListStale(ctx context.Context, olderTh
 func (r *sqliteMultipartUploadRepository) AddPart(ctx context.Context, part *MultipartPart) error {
 	const q = `
 		INSERT INTO multipart_parts (upload_id, part_number, size, etag, storage_path, created_at)
-		VALUES (?, ?, ?, ?, ?, ?)`
+		VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT(upload_id, part_number) DO UPDATE SET
+			size = excluded.size,
+			etag = excluded.etag,
+			storage_path = excluded.storage_path,
+			created_at = excluded.created_at`
+
+	if part.CreatedAt.IsZero() {
+		part.CreatedAt = time.Now().UTC()
+	}
 
 	_, err := r.db.ExecContext(ctx, q,
 		part.UploadID,
