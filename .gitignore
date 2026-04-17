@@ -54,6 +54,7 @@ venv/
 bin/
 *.test
 coverage.out
+/main
 
 # Rust
 target/

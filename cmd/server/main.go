@@ -9,6 +9,7 @@ import (
 
 	"github.com/i-got-this-faa/fbs/internal/config"
 	httpapi "github.com/i-got-this-faa/fbs/internal/http"
+	"github.com/i-got-this-faa/fbs/internal/metadata"
 	"github.com/i-got-this-faa/fbs/internal/server"
 )
 
@@ -20,6 +21,19 @@ func main() {
 		logger.Error("failed to load config", "error", err)
 		os.Exit(1)
 	}
+
+	// Outputting DB initialization
+	logger.Info("initializing database", "db_path", cfg.DBPath)
+	db, err := metadata.Open(cfg.DBPath)
+	if err != nil {
+		logger.Error("failed to open metadata db", "error", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	// Optionally initialize repositories here to be injected into extras if needed.
+	// userRepo := metadata.NewUserRepository(db)
+	// _ = userRepo // usage will come in subsequent F3/F4 features
 
 	router := httpapi.NewRouter(cfg, logger, nil)
 	srv := server.New(cfg, router)
