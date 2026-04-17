@@ -11,6 +11,7 @@ import (
 
 const (
 	defaultHTTPAddr        = "127.0.0.1:9000"
+	defaultDBPath          = "./fbs.db"
 	defaultDataDir         = "./data"
 	defaultReadTimeout     = 15 * time.Second
 	defaultWriteTimeout    = 30 * time.Second
@@ -27,6 +28,7 @@ var defaultCORSAllowedOrigins = []string{
 
 type Config struct {
 	HTTPAddr           string
+	DBPath             string
 	DataDir            string
 	PublicBaseURL      string
 	CORSAllowedOrigins []string
@@ -39,6 +41,7 @@ type Config struct {
 func Default() Config {
 	return Config{
 		HTTPAddr:           defaultHTTPAddr,
+		DBPath:             defaultDBPath,
 		DataDir:            defaultDataDir,
 		CORSAllowedOrigins: append([]string(nil), defaultCORSAllowedOrigins...),
 		ReadTimeout:        defaultReadTimeout,
@@ -73,6 +76,7 @@ func Load() (Config, error) {
 
 	flagSet := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 	httpAddr := flagSet.String("http-addr", envOrDefault("FBS_HTTP_ADDR", defaults.HTTPAddr), "HTTP listen address")
+	dbPath := flagSet.String("db-path", envOrDefault("FBS_DB_PATH", defaults.DBPath), "SQLite database path")
 	dataDir := flagSet.String("data-dir", envOrDefault("FBS_DATA_DIR", defaults.DataDir), "Data root directory")
 	publicBaseURL := flagSet.String("public-base-url", envOrDefault("FBS_PUBLIC_BASE_URL", defaults.PublicBaseURL), "Public base URL for ingress deployments")
 	corsAllowedOrigins := flagSet.String(
@@ -91,6 +95,7 @@ func Load() (Config, error) {
 
 	cfg := Config{
 		HTTPAddr:           strings.TrimSpace(*httpAddr),
+		DBPath:             strings.TrimSpace(*dbPath),
 		DataDir:            strings.TrimSpace(*dataDir),
 		PublicBaseURL:      strings.TrimSpace(*publicBaseURL),
 		CORSAllowedOrigins: splitCSV(*corsAllowedOrigins),
@@ -110,6 +115,10 @@ func Load() (Config, error) {
 func (c Config) Validate() error {
 	if c.HTTPAddr == "" {
 		return fmt.Errorf("http address is required")
+	}
+
+	if c.DBPath == "" {
+		return fmt.Errorf("database path is required")
 	}
 
 	if c.DataDir == "" {
