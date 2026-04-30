@@ -91,3 +91,7 @@ crash.log
 *.run.xml
 *.synctex.gz
 *.toc
+
+
+agents
+.codex

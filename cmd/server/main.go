@@ -2,12 +2,17 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"log/slog"
 	"math"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/i-got-this-faa/fbs/internal/auth"
 	"github.com/i-got-this-faa/fbs/internal/config"
 	httpapi "github.com/i-got-this-faa/fbs/internal/http"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
@@ -46,7 +51,51 @@ func main() {
 		os.Exit(1)
 	}
 
-	router := httpapi.NewRouter(cfg, logger, nil)
+	if cfg.DevMode {
+		logger.Warn("dev mode enabled: authentication is bypassed, do not expose this server remotely")
+	}
+
+	userRepo := metadata.NewUserRepository(db)
+	var authenticators []auth.Authenticator
+	if cfg.DevMode {
+		authenticators = append(authenticators, &auth.DevAuthenticator{})
+	}
+	authenticators = append(authenticators, &auth.BearerAuthenticator{Repo: userRepo})
+	authChain := &auth.ChainAuthenticator{Authenticators: authenticators}
+
+	writeJSONAuthError := func(w http.ResponseWriter, _ *http.Request, err error) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		switch {
+		case errors.Is(err, auth.ErrMissingAuth):
+			w.Header().Set("WWW-Authenticate", `Bearer realm="fbs"`)
+			w.WriteHeader(http.StatusUnauthorized)
+		case errors.Is(err, auth.ErrUnsupportedScheme):
+			w.WriteHeader(http.StatusUnauthorized)
+		case errors.Is(err, auth.ErrInactiveUser), errors.Is(err, auth.ErrForbidden):
+			w.WriteHeader(http.StatusForbidden)
+		case errors.Is(err, auth.ErrInternal):
+			w.WriteHeader(http.StatusInternalServerError)
+		default:
+			w.WriteHeader(http.StatusUnauthorized)
+		}
+		json.NewEncoder(w).Encode(map[string]string{"error": "auth failed"})
+	}
+
+	router := httpapi.NewRouter(cfg, logger, func(r chi.Router) {
+		r.Group(func(authGroup chi.Router) {
+			authGroup.Use(auth.RequireAuthentication(authChain, writeJSONAuthError))
+			authGroup.Get("/_health/auth", func(w http.ResponseWriter, r *http.Request) {
+				p, _ := auth.PrincipalFromContext(r.Context())
+				w.Header().Set("Content-Type", "application/json; charset=utf-8")
+				json.NewEncoder(w).Encode(map[string]any{
+					"status":   "authenticated",
+					"user_id":  p.UserID,
+					"role":     p.Role,
+					"dev_mode": p.DevMode,
+				})
+			})
+		})
+	})
 	srv := server.New(cfg, router)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

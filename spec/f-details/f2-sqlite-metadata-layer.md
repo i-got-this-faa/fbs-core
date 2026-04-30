@@ -215,7 +215,7 @@ type MultipartPart struct {
     UploadID    string
     PartNumber  int
     Size        int64
-    ETag        string
+    ETag        stringpen the database with the following pragmas applied at connection tim
     StoragePath string
     CreatedAt   time.Time
 }

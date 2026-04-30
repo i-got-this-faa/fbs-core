@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/i-got-this-faa/fbs/internal/auth"
 )
 
 const (
@@ -27,9 +30,10 @@ var defaultCORSAllowedOrigins = []string{
 }
 
 type Config struct {
-	HTTPAddr           string
+	HTTPAddr           string 
 	DBPath             string
 	DataDir            string
+	DevMode            bool
 	PublicBaseURL      string
 	CORSAllowedOrigins []string
 	ReadTimeout        time.Duration
@@ -78,6 +82,11 @@ func Load() (Config, error) {
 	httpAddr := flagSet.String("http-addr", envOrDefault("FBS_HTTP_ADDR", defaults.HTTPAddr), "HTTP listen address")
 	dbPath := flagSet.String("db-path", envOrDefault("FBS_DB_PATH", defaults.DBPath), "SQLite database path")
 	dataDir := flagSet.String("data-dir", envOrDefault("FBS_DATA_DIR", defaults.DataDir), "Data root directory")
+	devMode, err := boolFromEnvStrict("FBS_DEV", defaults.DevMode)
+	if err != nil {
+		return Config{}, err
+	}
+	devModeFlag := flagSet.Bool("dev", devMode, "Development mode (bypasses authentication)")
 	publicBaseURL := flagSet.String("public-base-url", envOrDefault("FBS_PUBLIC_BASE_URL", defaults.PublicBaseURL), "Public base URL for ingress deployments")
 	corsAllowedOrigins := flagSet.String(
 		"cors-allowed-origins",
@@ -97,6 +106,7 @@ func Load() (Config, error) {
 		HTTPAddr:           strings.TrimSpace(*httpAddr),
 		DBPath:             strings.TrimSpace(*dbPath),
 		DataDir:            strings.TrimSpace(*dataDir),
+		DevMode:            *devModeFlag,
 		PublicBaseURL:      strings.TrimSpace(*publicBaseURL),
 		CORSAllowedOrigins: splitCSV(*corsAllowedOrigins),
 		ReadTimeout:        readTimeout,
@@ -137,6 +147,12 @@ func (c Config) Validate() error {
 
 	if c.ReadTimeout <= 0 || c.WriteTimeout <= 0 || c.IdleTimeout <= 0 || c.ShutdownTimeout <= 0 {
 		return fmt.Errorf("timeouts must be greater than zero")
+	}
+
+	if c.DevMode {
+		if err := auth.ValidateDevMode(c.HTTPAddr, c.DevMode); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -183,4 +199,42 @@ func splitCSV(value string) []string {
 	}
 
 	return cleaned
+}
+
+func boolFromEnv(key string, fallback bool) bool {
+	value, ok := os.LookupEnv(key)
+	if !ok {
+		return fallback
+	}
+
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return fallback
+	}
+
+	b, err := strconv.ParseBool(trimmed)
+	if err != nil {
+		return fallback
+	}
+
+	return b
+}
+
+func boolFromEnvStrict(key string, fallback bool) (bool, error) {
+	value, ok := os.LookupEnv(key)
+	if !ok {
+		return fallback, nil
+	}
+
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return fallback, nil
+	}
+
+	b, err := strconv.ParseBool(trimmed)
+	if err != nil {
+		return false, fmt.Errorf("invalid value for %s: %q", key, value)
+	}
+
+	return b, nil
 }
