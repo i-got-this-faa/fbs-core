@@ -1,10 +1,14 @@
 package auth
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/i-got-this-faa/fbs/internal/metadata"
 )
 
 func TestIssueBearerToken(t *testing.T) {
@@ -75,5 +79,45 @@ func TestIssueBearerToken_Unique(t *testing.T) {
 	}
 	if issued1.RawToken == issued2.RawToken {
 		t.Error("expected unique RawTokens")
+	}
+}
+
+func TestCreateBearerTokenPersistsActiveUser(t *testing.T) {
+	t.Parallel()
+
+	db, err := metadata.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open test db: %v", err)
+	}
+	defer db.Close()
+
+	repo := metadata.NewUserRepository(db)
+	issued, user, err := CreateBearerToken(context.Background(), repo, "Admin User", "admin")
+	if err != nil {
+		t.Fatalf("CreateBearerToken() error = %v", err)
+	}
+
+	stored, err := repo.GetByAccessKeyID(context.Background(), issued.AccessKeyID)
+	if err != nil {
+		t.Fatalf("get user by access key: %v", err)
+	}
+
+	if stored.ID != user.ID {
+		t.Errorf("stored ID = %q, want %q", stored.ID, user.ID)
+	}
+	if stored.DisplayName != "Admin User" {
+		t.Errorf("DisplayName = %q, want Admin User", stored.DisplayName)
+	}
+	if stored.Role != "admin" {
+		t.Errorf("Role = %q, want admin", stored.Role)
+	}
+	if !stored.IsActive {
+		t.Error("expected persisted user to be active")
+	}
+	if stored.SecretHash != issued.SecretHash {
+		t.Error("persisted hash does not match issued hash")
+	}
+	if strings.Contains(stored.SecretHash, issued.RawToken) {
+		t.Error("stored hash should not contain raw token")
 	}
 }

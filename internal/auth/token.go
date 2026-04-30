@@ -1,12 +1,17 @@
 package auth
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/i-got-this-faa/fbs/internal/metadata"
 )
 
 const tokenPrefix = "fbsa_"
@@ -36,6 +41,31 @@ func IssueBearerToken() (IssuedToken, error) {
 		RawToken:    rawToken,
 		SecretHash:  secretHash,
 	}, nil
+}
+
+func CreateBearerToken(ctx context.Context, repo metadata.UserRepository, displayName, role string) (IssuedToken, *metadata.User, error) {
+	issued, err := IssueBearerToken()
+	if err != nil {
+		return IssuedToken{}, nil, err
+	}
+
+	now := time.Now().UTC()
+	user := &metadata.User{
+		ID:          uuid.NewString(),
+		DisplayName: displayName,
+		AccessKeyID: issued.AccessKeyID,
+		SecretHash:  issued.SecretHash,
+		Role:        role,
+		IsActive:    true,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+
+	if err := repo.Create(ctx, user); err != nil {
+		return IssuedToken{}, nil, fmt.Errorf("create bearer token user: %w", err)
+	}
+
+	return issued, user, nil
 }
 
 func hashSecret(secret string) string {

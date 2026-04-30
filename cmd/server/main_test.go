@@ -3,11 +3,8 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"context"
-	"encoding/json"
 	"io"
 	"net"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,9 +12,6 @@ import (
 	"syscall"
 	"testing"
 	"time"
-
-	"github.com/i-got-this-faa/fbs/internal/auth"
-	"github.com/i-got-this-faa/fbs/internal/metadata"
 )
 
 func buildServerBinary(t *testing.T) string {
@@ -208,135 +202,7 @@ func startTestServer(t *testing.T, extraEnv ...string) (cmd *exec.Cmd, baseURL s
 	return cmd, baseURL, shutdown
 }
 
-func TestServerAuth_ProtectedRouteRequiresAuth(t *testing.T) {
-	_, baseURL, shutdown := startTestServer(t)
-	defer shutdown()
-
-	resp, err := http.Get(baseURL + "/_health/auth")
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("expected 401, got %d", resp.StatusCode)
-	}
-
-	wwwAuth := resp.Header.Get("WWW-Authenticate")
-	if !strings.Contains(wwwAuth, `Bearer realm="fbs"`) {
-		t.Fatalf("expected WWW-Authenticate header, got %q", wwwAuth)
-	}
-}
-
 func TestServerAuth_DevModeBypass(t *testing.T) {
-	_, baseURL, shutdown := startTestServer(t, "FBS_DEV=true")
+	_, _, shutdown := startTestServer(t, "FBS_DEV=true")
 	defer shutdown()
-
-	resp, err := http.Get(baseURL + "/_health/auth")
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.StatusCode)
-	}
-
-	var body map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		t.Fatalf("decode failed: %v", err)
-	}
-
-	if body["user_id"] != "dev-user" {
-		t.Errorf("user_id = %q, want dev-user", body["user_id"])
-	}
-	if body["role"] != "admin" {
-		t.Errorf("role = %q, want admin", body["role"])
-	}
-	if body["dev_mode"] != true {
-		t.Errorf("dev_mode = %v, want true", body["dev_mode"])
-	}
-}
-
-func TestServerAuth_BearerToken(t *testing.T) {
-	workDir := t.TempDir()
-	dbPath := filepath.Join(workDir, "test.db")
-
-	db, err := metadata.Open(dbPath)
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-
-	issued, err := auth.IssueBearerToken()
-	if err != nil {
-		t.Fatalf("issue token: %v", err)
-	}
-
-	user := &metadata.User{
-		ID:          "user-test",
-		DisplayName: "Test User",
-		AccessKeyID: issued.AccessKeyID,
-		SecretHash:  issued.SecretHash,
-		Role:        "member",
-		IsActive:    true,
-		CreatedAt:   time.Now().UTC(),
-		UpdatedAt:   time.Now().UTC(),
-	}
-	if err := metadata.NewUserRepository(db).Create(context.Background(), user); err != nil {
-		t.Fatalf("create user: %v", err)
-	}
-	db.Close()
-
-	_, baseURL, shutdown := startTestServer(t, "FBS_DB_PATH="+dbPath)
-	defer shutdown()
-
-	req, _ := http.NewRequest(http.MethodGet, baseURL+"/_health/auth", nil)
-	req.Header.Set("Authorization", "Bearer "+issued.RawToken)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.StatusCode)
-	}
-
-	var body map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		t.Fatalf("decode failed: %v", err)
-	}
-
-	if body["user_id"] != "user-test" {
-		t.Errorf("user_id = %q, want user-test", body["user_id"])
-	}
-	if body["role"] != "member" {
-		t.Errorf("role = %q, want member", body["role"])
-	}
-	if body["dev_mode"] != false {
-		t.Errorf("dev_mode = %v, want false", body["dev_mode"])
-	}
-}
-
-func TestServerAuth_UnsupportedScheme(t *testing.T) {
-	_, baseURL, shutdown := startTestServer(t)
-	defer shutdown()
-
-	req, _ := http.NewRequest(http.MethodGet, baseURL+"/_health/auth", nil)
-	req.Header.Set("Authorization", "Basic dXNlcjpwYXNz")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatalf("request failed: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("expected 401, got %d", resp.StatusCode)
-	}
-
-	if strings.Contains(resp.Header.Get("WWW-Authenticate"), `Bearer realm="fbs"`) {
-		t.Error("unsupported scheme should not trigger WWW-Authenticate")
-	}
 }

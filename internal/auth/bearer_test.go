@@ -173,11 +173,11 @@ func TestBearerAuthWhitespaceNormalization(t *testing.T) {
 	ba := &BearerAuthenticator{Repo: repo}
 
 	cases := []string{
-		"Bearer " + rawToken,           // single space
-		"Bearer  " + rawToken,          // double space
-		"Bearer\t" + rawToken,          // tab
-		" Bearer " + rawToken + " ",   // leading/trailing spaces
-		"Bearer\t\t" + rawToken,        // multiple tabs
+		"Bearer " + rawToken,        // single space
+		"Bearer  " + rawToken,       // double space
+		"Bearer\t" + rawToken,       // tab
+		" Bearer " + rawToken + " ", // leading/trailing spaces
+		"Bearer\t\t" + rawToken,     // multiple tabs
 	}
 
 	for _, auth := range cases {
@@ -229,6 +229,25 @@ func TestBearerAuthInactiveUser(t *testing.T) {
 	}
 }
 
+func TestBearerAuthInactiveUserWrongSecret(t *testing.T) {
+	t.Parallel()
+
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	repo := metadata.NewUserRepository(db)
+	user, _ := createTestUser(t, repo, "Disabled", "member", false)
+
+	ba := &BearerAuthenticator{Repo: repo}
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer "+user.AccessKeyID+".wrongsecret")
+
+	_, err := ba.Authenticate(req)
+	if err != ErrInvalidCredentials {
+		t.Fatalf("expected ErrInvalidCredentials, got %v", err)
+	}
+}
+
 func TestBearerAuthWrongSecret(t *testing.T) {
 	t.Parallel()
 
@@ -261,8 +280,8 @@ func TestNoPlaintextSecretInErrors(t *testing.T) {
 	ba := &BearerAuthenticator{Repo: repo}
 
 	cases := []struct {
-		name   string
-		token  string
+		name    string
+		token   string
 		wantErr error
 	}{
 		{"wrong secret", user.AccessKeyID + ".wrongsecret", ErrInvalidCredentials},
@@ -291,14 +310,16 @@ func TestNoPlaintextSecretInErrors(t *testing.T) {
 
 type failingUserRepo struct{}
 
-func (f *failingUserRepo) Create(_ context.Context, _ *metadata.User) error         { return nil }
-func (f *failingUserRepo) GetByID(_ context.Context, _ string) (*metadata.User, error)   { return nil, nil }
+func (f *failingUserRepo) Create(_ context.Context, _ *metadata.User) error { return nil }
+func (f *failingUserRepo) GetByID(_ context.Context, _ string) (*metadata.User, error) {
+	return nil, nil
+}
 func (f *failingUserRepo) GetByAccessKeyID(_ context.Context, _ string) (*metadata.User, error) {
 	return nil, errors.New("database connection lost")
 }
-func (f *failingUserRepo) List(_ context.Context) ([]metadata.User, error)          { return nil, nil }
-func (f *failingUserRepo) Update(_ context.Context, _ *metadata.User) error         { return nil }
-func (f *failingUserRepo) Delete(_ context.Context, _ string) error                 { return nil }
+func (f *failingUserRepo) List(_ context.Context) ([]metadata.User, error)  { return nil, nil }
+func (f *failingUserRepo) Update(_ context.Context, _ *metadata.User) error { return nil }
+func (f *failingUserRepo) Delete(_ context.Context, _ string) error         { return nil }
 
 func TestBearerAuthInternalError(t *testing.T) {
 	t.Parallel()

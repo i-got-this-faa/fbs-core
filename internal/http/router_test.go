@@ -256,11 +256,16 @@ func TestAuthIntegration_InactiveUser(t *testing.T) {
 	}
 	defer db.Close()
 
+	issued, err := auth.IssueBearerToken()
+	if err != nil {
+		t.Fatalf("issue token: %v", err)
+	}
+
 	user := &metadata.User{
 		ID:          "user-inactive",
 		DisplayName: "Inactive User",
-		AccessKeyID: "fbsa_inactive_test",
-		SecretHash:  "hash",
+		AccessKeyID: issued.AccessKeyID,
+		SecretHash:  issued.SecretHash,
 		Role:        "member",
 		IsActive:    false,
 		CreatedAt:   time.Now().UTC(),
@@ -306,7 +311,7 @@ func TestAuthIntegration_InactiveUser(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
-	req.Header.Set("Authorization", "Bearer fbsa_inactive_test.anything")
+	req.Header.Set("Authorization", "Bearer "+issued.RawToken)
 	rr := httptest.NewRecorder()
 	router.ServeHTTP(rr, req)
 
@@ -427,14 +432,16 @@ func TestAuthIntegration_InternalError(t *testing.T) {
 
 type failingUserRepo struct{}
 
-func (f *failingUserRepo) Create(_ context.Context, _ *metadata.User) error       { return nil }
-func (f *failingUserRepo) GetByID(_ context.Context, _ string) (*metadata.User, error) { return nil, nil }
+func (f *failingUserRepo) Create(_ context.Context, _ *metadata.User) error { return nil }
+func (f *failingUserRepo) GetByID(_ context.Context, _ string) (*metadata.User, error) {
+	return nil, nil
+}
 func (f *failingUserRepo) GetByAccessKeyID(_ context.Context, _ string) (*metadata.User, error) {
 	return nil, errors.New("database connection lost")
 }
-func (f *failingUserRepo) List(_ context.Context) ([]metadata.User, error)        { return nil, nil }
-func (f *failingUserRepo) Update(_ context.Context, _ *metadata.User) error       { return nil }
-func (f *failingUserRepo) Delete(_ context.Context, _ string) error               { return nil }
+func (f *failingUserRepo) List(_ context.Context) ([]metadata.User, error)  { return nil, nil }
+func (f *failingUserRepo) Update(_ context.Context, _ *metadata.User) error { return nil }
+func (f *failingUserRepo) Delete(_ context.Context, _ string) error         { return nil }
 
 func testConfig() config.Config {
 	cfg := config.Default()

@@ -41,12 +41,12 @@ func (b *BearerAuthenticator) Authenticate(r *http.Request) (Principal, error) {
 		return Principal{}, ErrInternal
 	}
 
-	if !user.IsActive {
-		return Principal{}, ErrInactiveUser
-	}
-
 	if !verifySecret(secret, user.SecretHash) {
 		return Principal{}, ErrInvalidCredentials
+	}
+
+	if !user.IsActive {
+		return Principal{}, ErrInactiveUser
 	}
 
 	return Principal{

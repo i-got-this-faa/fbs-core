@@ -101,15 +101,6 @@ func TestBoolFromEnvStrict(t *testing.T) {
 	}
 }
 
-func TestBoolFromEnvFallbackOnInvalid(t *testing.T) {
-	t.Setenv("TEST_BOOL_FALLBACK", "invalid")
-
-	got := boolFromEnv("TEST_BOOL_FALLBACK", true)
-	if !got {
-		t.Error("expected fallback true on invalid parse")
-	}
-}
-
 func TestLoad_DevFlag(t *testing.T) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()

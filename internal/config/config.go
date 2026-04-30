@@ -30,7 +30,7 @@ var defaultCORSAllowedOrigins = []string{
 }
 
 type Config struct {
-	HTTPAddr           string 
+	HTTPAddr           string
 	DBPath             string
 	DataDir            string
 	DevMode            bool
@@ -199,25 +199,6 @@ func splitCSV(value string) []string {
 	}
 
 	return cleaned
-}
-
-func boolFromEnv(key string, fallback bool) bool {
-	value, ok := os.LookupEnv(key)
-	if !ok {
-		return fallback
-	}
-
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" {
-		return fallback
-	}
-
-	b, err := strconv.ParseBool(trimmed)
-	if err != nil {
-		return fallback
-	}
-
-	return b
 }
 
 func boolFromEnvStrict(key string, fallback bool) (bool, error) {
