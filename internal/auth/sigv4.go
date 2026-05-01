@@ -480,7 +480,7 @@ func shouldEscape(c byte) bool {
 
 func buildStringToSign(timestamp, credentialScope, canonicalRequest string) string {
 	scope := credentialScope
-	if i := strings.IndexByte(credentialScope, '/'); i >= 0 && i+1 < len(credentialScope) {
+	if i := strings.IndexByte(credentialScope, '/'); i >= 0 {
 		scope = credentialScope[i+1:]
 	}
 	hash := sha256.Sum256([]byte(canonicalRequest))
