@@ -479,8 +479,10 @@ func shouldEscape(c byte) bool {
 }
 
 func buildStringToSign(timestamp, credentialScope, canonicalRequest string) string {
-	date := timestamp[:8]
-	scope := date + "/" + strings.Join(strings.Split(credentialScope, "/")[1:], "/")
+	scope := credentialScope
+	if i := strings.IndexByte(credentialScope, '/'); i >= 0 && i+1 < len(credentialScope) {
+		scope = credentialScope[i+1:]
+	}
 	hash := sha256.Sum256([]byte(canonicalRequest))
 	return strings.Join([]string{
 		sigV4Algorithm,
