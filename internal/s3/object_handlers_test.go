@@ -83,6 +83,7 @@ func newObjectTestEnv(t *testing.T) objectTestEnv {
 			protected.Use(auth.RequireAuthentication(&auth.DevAuthenticator{}, func(w http.ResponseWriter, r *http.Request, err error) {
 				WriteS3Error(w, r, http.StatusForbidden, codeAccessDenied, messageAccessDenied)
 			}))
+			RegisterBucketRoutes(protected, handlers)
 			RegisterObjectRoutes(protected, handlers)
 		})
 	})
