@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -16,9 +15,8 @@ import (
 )
 
 const (
-	defaultListMaxKeys  = 1000
-	maxListKeys         = 1000
-	listObjectsPageSize = 1000
+	defaultListMaxKeys = 1000
+	maxListKeys        = 1000
 
 	// maxContinuationTokenLen is the maximum accepted length of a base64-encoded
 	// continuation token. S3 keys are at most 1024 bytes; base64 overhead is ~4/3,
@@ -92,14 +90,14 @@ func (h *ObjectHandlers) ListObjectsV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	entries, err := h.listObjectsV2Entries(r, bucketName, params)
+	entries, isTruncated, err := h.listObjectsV2Entries(r, bucketName, params)
 	if err != nil {
 		h.logError("list bucket objects", err, bucketName, "", "")
 		WriteS3Error(w, r, http.StatusInternalServerError, codeInternalError, messageInternalError)
 		return
 	}
 
-	result := buildListBucketResult(bucketName, params, entries)
+	result := buildListBucketResult(bucketName, params, entries, isTruncated)
 	w.Header().Set("Content-Type", "application/xml")
 	w.WriteHeader(http.StatusOK)
 	_ = xml.NewEncoder(w).Encode(result)
@@ -148,86 +146,46 @@ func parseListObjectsV2Params(r *http.Request) (listObjectsV2Params, error) {
 	}, nil
 }
 
-func (h *ObjectHandlers) listObjectsV2Entries(r *http.Request, bucketName string, params listObjectsV2Params) ([]listEntry, error) {
+func (h *ObjectHandlers) listObjectsV2Entries(r *http.Request, bucketName string, params listObjectsV2Params) ([]listEntry, bool, error) {
 	if params.maxKeys == 0 {
-		return nil, nil
+		return nil, false, nil
 	}
 
 	if params.delimiter == "" {
-		objects, _, err := h.Objects.List(r.Context(), bucketName, params.prefix, params.startAfter, params.maxKeys+1)
+		objects, isTruncated, err := h.Objects.List(r.Context(), bucketName, params.prefix, params.startAfter, params.maxKeys)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 
 		entries := make([]listEntry, 0, len(objects))
 		for i := range objects {
 			entries = append(entries, listEntry{value: objects[i].Key, cursor: objects[i].Key, object: &objects[i]})
 		}
-		return entries, nil
+		return entries, isTruncated, nil
 	}
 
-	return h.listDelimitedObjectsV2Entries(r, bucketName, params)
+	results, err := h.Objects.ListDelimited(r.Context(), bucketName, params.prefix, params.startAfter, params.delimiter, params.maxKeys)
+	if err != nil {
+		return nil, false, err
+	}
+
+	isTruncated := len(results) > params.maxKeys
+	if isTruncated {
+		results = results[:params.maxKeys]
+	}
+
+	entries := make([]listEntry, 0, len(results))
+	for _, res := range results {
+		if res.IsPrefix {
+			entries = append(entries, listEntry{value: res.VirtualKey, cursor: res.CursorKey})
+		} else {
+			entries = append(entries, listEntry{value: res.VirtualKey, cursor: res.CursorKey, object: res.Object})
+		}
+	}
+	return entries, isTruncated, nil
 }
 
-func (h *ObjectHandlers) listDelimitedObjectsV2Entries(r *http.Request, bucketName string, params listObjectsV2Params) ([]listEntry, error) {
-	startAfter := params.startAfter
-	objectEntries := make([]listEntry, 0, params.maxKeys+1)
-	commonPrefixCursors := make(map[string]string)
-
-	for {
-		objects, isTruncated, err := h.Objects.List(r.Context(), bucketName, params.prefix, startAfter, listObjectsPageSize)
-		if err != nil {
-			return nil, err
-		}
-		if len(objects) == 0 {
-			return mergeDelimitedEntries(objectEntries, commonPrefixCursors), nil
-		}
-
-		for i := range objects {
-			addDelimitedEntry(objects[i], params.prefix, params.delimiter, params.startAfter, &objectEntries, commonPrefixCursors)
-		}
-
-		entries := mergeDelimitedEntries(objectEntries, commonPrefixCursors)
-		if len(entries) > params.maxKeys || !isTruncated {
-			return entries, nil
-		}
-
-		startAfter = objects[len(objects)-1].Key
-	}
-}
-
-func addDelimitedEntry(object metadata.Object, prefix, delimiter, startAfter string, objectEntries *[]listEntry, commonPrefixCursors map[string]string) {
-	key := object.Key
-	remainder := strings.TrimPrefix(key, prefix)
-	delimiterIndex := strings.Index(remainder, delimiter)
-	if delimiterIndex < 0 {
-		*objectEntries = append(*objectEntries, listEntry{value: key, cursor: key, object: &object})
-		return
-	}
-
-	commonPrefix := prefix + remainder[:delimiterIndex+len(delimiter)]
-	if commonPrefix <= startAfter {
-		return
-	}
-	if key > commonPrefixCursors[commonPrefix] {
-		commonPrefixCursors[commonPrefix] = key
-	}
-}
-
-func mergeDelimitedEntries(objectEntries []listEntry, commonPrefixCursors map[string]string) []listEntry {
-	entries := make([]listEntry, 0, len(objectEntries)+len(commonPrefixCursors))
-	entries = append(entries, objectEntries...)
-	for commonPrefix, cursor := range commonPrefixCursors {
-		entries = append(entries, listEntry{value: commonPrefix, cursor: cursor})
-	}
-	sort.SliceStable(entries, func(i, j int) bool {
-		return entries[i].value < entries[j].value
-	})
-
-	return entries
-}
-
-func buildListBucketResult(bucketName string, params listObjectsV2Params, entries []listEntry) listBucketResult {
+func buildListBucketResult(bucketName string, params listObjectsV2Params, entries []listEntry, isTruncated bool) listBucketResult {
 	result := listBucketResult{
 		Xmlns:             "http://s3.amazonaws.com/doc/2006-03-01/",
 		Name:              bucketName,
@@ -243,14 +201,12 @@ func buildListBucketResult(bucketName string, params listObjectsV2Params, entrie
 		result.StartAfter = encodeListValue(params.responseStartAfter, params.encodingType)
 	}
 
-	visibleEntries := entries
-	if len(entries) > params.maxKeys {
+	if isTruncated && len(entries) > 0 {
 		result.IsTruncated = true
-		visibleEntries = entries[:params.maxKeys]
-		result.NextContinuationToken = encodeContinuationToken(visibleEntries[len(visibleEntries)-1].cursor)
+		result.NextContinuationToken = encodeContinuationToken(entries[len(entries)-1].cursor)
 	}
 
-	for _, entry := range visibleEntries {
+	for _, entry := range entries {
 		if entry.object == nil {
 			result.CommonPrefixes = append(result.CommonPrefixes, listCommonPrefix{
 				Prefix: encodeListValue(entry.value, params.encodingType),
