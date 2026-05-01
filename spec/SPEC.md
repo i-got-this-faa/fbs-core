@@ -10,7 +10,7 @@ This system is a self-hosted, lightweight object storage ecosystem. It provides 
 - **Stack:** Go, `chi` router, SQLite (WAL mode).
 - **Storage:** Local File System (`/data/{bucket_name}/{object_key}`), with path sanitization to prevent traversal attacks and safe handling of special characters in object keys.
 - **Performance:** OS Page Cache (`sendfile`), Go Memory LRU Cache for hot SQLite rows. SQLite tuned with `synchronous=NORMAL` and `busy_timeout=5000`.
-- **Authentication:** Dual Mode (AWS SigV4 for SDKs, Bearer Token for homelab/simple, `--dev` flag to bypass). Bearer tokens stored as SHA-256 hashes, never in plaintext.
+- **Authentication:** Dual Mode (AWS SigV4 for SDKs, Bearer Token for homelab/simple, `--dev` flag to bypass). Bearer token secrets stored as SHA-256 hashes, never in plaintext. SigV4 secret keys are stored raw (required for HMAC signature verification) and presented once to the user at creation time.
 
 ### 2.2 Web Dashboard (SvelteKit)
 - **Role:** A standalone graphical interface for administrators to manage buckets, keys, and view metrics in the browser.

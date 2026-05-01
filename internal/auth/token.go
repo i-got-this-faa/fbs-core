@@ -14,12 +14,20 @@ import (
 	"github.com/i-got-this-faa/fbs/internal/metadata"
 )
 
-const tokenPrefix = "fbsa_"
+const (
+	tokenPrefix    = "fbsa_"
+	sigV4Prefix    = "fbsv4_"
+)
 
 type IssuedToken struct {
 	AccessKeyID string
 	RawToken    string
 	SecretHash  string
+}
+
+type SigV4Credentials struct {
+	AccessKeyID string
+	SecretKey   string
 }
 
 func IssueBearerToken() (IssuedToken, error) {
@@ -43,29 +51,57 @@ func IssueBearerToken() (IssuedToken, error) {
 	}, nil
 }
 
-func CreateBearerToken(ctx context.Context, repo metadata.UserRepository, displayName, role string) (IssuedToken, *metadata.User, error) {
+func IssueSigV4Credentials() (SigV4Credentials, error) {
+	accessKeyID, err := generateID(sigV4Prefix)
+	if err != nil {
+		return SigV4Credentials{}, fmt.Errorf("generate sigv4 access key id: %w", err)
+	}
+
+	secretKey, err := generateSecret()
+	if err != nil {
+		return SigV4Credentials{}, fmt.Errorf("generate sigv4 secret key: %w", err)
+	}
+
+	return SigV4Credentials{
+		AccessKeyID: accessKeyID,
+		SecretKey:   secretKey,
+	}, nil
+}
+
+func CreateBearerToken(ctx context.Context, repo metadata.UserRepository, displayName, role string) (IssuedToken, SigV4Credentials, *metadata.User, error) {
 	issued, err := IssueBearerToken()
 	if err != nil {
-		return IssuedToken{}, nil, err
+		return IssuedToken{}, SigV4Credentials{}, nil, err
+	}
+
+	sigv4Creds, err := IssueSigV4Credentials()
+	if err != nil {
+		return IssuedToken{}, SigV4Credentials{}, nil, err
 	}
 
 	now := time.Now().UTC()
 	user := &metadata.User{
-		ID:          uuid.NewString(),
-		DisplayName: displayName,
-		AccessKeyID: issued.AccessKeyID,
-		SecretHash:  issued.SecretHash,
-		Role:        role,
-		IsActive:    true,
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		ID:               uuid.NewString(),
+		DisplayName:      displayName,
+		AccessKeyID:      issued.AccessKeyID,
+		SecretHash:       issued.SecretHash,
+		SigV4AccessKeyID: sigv4Creds.AccessKeyID,
+		SigV4SecretKey:   sigv4Creds.SecretKey,
+		Role:             role,
+		IsActive:         true,
+		CreatedAt:        now,
+		UpdatedAt:        now,
 	}
 
 	if err := repo.Create(ctx, user); err != nil {
-		return IssuedToken{}, nil, fmt.Errorf("create bearer token user: %w", err)
+		return IssuedToken{}, SigV4Credentials{}, nil, fmt.Errorf("create bearer token user: %w", err)
 	}
 
-	return issued, user, nil
+	// The secret key is presented once via SigV4Credentials and must never
+	// be retrievable again through the user object.
+	user.SigV4SecretKey = ""
+
+	return issued, sigv4Creds, user, nil
 }
 
 func hashSecret(secret string) string {
@@ -85,11 +121,15 @@ func verifySecret(secret, storedHex string) bool {
 }
 
 func generateAccessKeyID() (string, error) {
+	return generateID(tokenPrefix)
+}
+
+func generateID(prefix string) (string, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
-	return tokenPrefix + hex.EncodeToString(b), nil
+	return prefix + hex.EncodeToString(b), nil
 }
 
 func generateSecret() (string, error) {
