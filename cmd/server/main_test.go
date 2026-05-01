@@ -34,6 +34,20 @@ func buildServerBinary(t *testing.T) string {
 	return binPath
 }
 
+func buildServerBinaryWithTestEndpoints(t *testing.T) string {
+	t.Helper()
+
+	binPath := filepath.Join(t.TempDir(), "fbs-server-testendpoints")
+	cmd := exec.Command("go", "build", "-tags", "testendpoints", "-o", binPath, ".")
+	cmd.Env = os.Environ()
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("failed to build server binary with testendpoints tag: %v\noutput:\n%s", err, string(out))
+	}
+	return binPath
+}
+
 func TestBuildServerBinary(t *testing.T) {
 	buildServerBinary(t)
 }
@@ -132,7 +146,7 @@ func findFreePort(t *testing.T) string {
 func startTestServer(t *testing.T, extraEnv ...string) (cmd *exec.Cmd, baseURL string, shutdown func()) {
 	t.Helper()
 
-	binPath := buildServerBinary(t)
+	binPath := buildServerBinaryWithTestEndpoints(t)
 	workDir := t.TempDir()
 	addr := findFreePort(t)
 	baseURL = "http://" + addr
@@ -209,7 +223,7 @@ func startTestServer(t *testing.T, extraEnv ...string) (cmd *exec.Cmd, baseURL s
 }
 
 func TestServerAuth_DevModeBypass(t *testing.T) {
-	_, baseURL, shutdown := startTestServer(t, "FBS_DEV=true", "FBS_TEST_ENDPOINTS=1")
+	_, baseURL, shutdown := startTestServer(t, "FBS_DEV=true")
 	defer shutdown()
 
 	resp, err := http.Get(baseURL + "/_health/auth")
@@ -239,7 +253,7 @@ func TestServerAuth_DevModeBypass(t *testing.T) {
 }
 
 func TestServerAuth_ProtectedRouteRequiresAuth(t *testing.T) {
-	_, baseURL, shutdown := startTestServer(t, "FBS_TEST_ENDPOINTS=1")
+	_, baseURL, shutdown := startTestServer(t)
 	defer shutdown()
 
 	resp, err := http.Get(baseURL + "/_health/auth")
@@ -294,7 +308,7 @@ func TestServerAuth_BearerToken(t *testing.T) {
 	}
 	db.Close()
 
-	_, baseURL, shutdown := startTestServer(t, "FBS_DB_PATH="+dbPath, "FBS_TEST_ENDPOINTS=1")
+	_, baseURL, shutdown := startTestServer(t, "FBS_DB_PATH="+dbPath)
 	defer shutdown()
 
 	req, _ := http.NewRequest(http.MethodGet, baseURL+"/_health/auth", nil)
@@ -327,7 +341,7 @@ func TestServerAuth_BearerToken(t *testing.T) {
 }
 
 func TestServerAuth_UnsupportedScheme(t *testing.T) {
-	_, baseURL, shutdown := startTestServer(t, "FBS_TEST_ENDPOINTS=1")
+	_, baseURL, shutdown := startTestServer(t)
 	defer shutdown()
 
 	req, _ := http.NewRequest(http.MethodGet, baseURL+"/_health/auth", nil)
@@ -379,7 +393,7 @@ func TestServerAuth_SigV4(t *testing.T) {
 	}
 	db.Close()
 
-	_, baseURL, shutdown := startTestServer(t, "FBS_DB_PATH="+dbPath, "FBS_TEST_ENDPOINTS=1")
+	_, baseURL, shutdown := startTestServer(t, "FBS_DB_PATH="+dbPath)
 	defer shutdown()
 
 	req, _ := http.NewRequest(http.MethodGet, baseURL+"/_health/auth", nil)
@@ -444,7 +458,7 @@ func TestServerAuth_SigV4WrongSignature(t *testing.T) {
 	}
 	db.Close()
 
-	_, baseURL, shutdown := startTestServer(t, "FBS_DB_PATH="+dbPath, "FBS_TEST_ENDPOINTS=1")
+	_, baseURL, shutdown := startTestServer(t, "FBS_DB_PATH="+dbPath)
 	defer shutdown()
 
 	req, _ := http.NewRequest(http.MethodGet, baseURL+"/_health/auth", nil)

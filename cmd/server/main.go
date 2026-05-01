@@ -79,21 +79,9 @@ func main() {
 			s3Routes.Use(auth.RequireAuthentication(authChain, writeS3AuthError))
 			s3.RegisterObjectRoutes(s3Routes, objectHandlers)
 		})
-		if os.Getenv("FBS_TEST_ENDPOINTS") == "1" {
-			r.Group(func(testRoutes chi.Router) {
-				testRoutes.Use(auth.RequireAuthentication(authChain, writeJSONAuthError))
-				testRoutes.Get("/_health/auth", func(w http.ResponseWriter, r *http.Request) {
-					p, _ := auth.PrincipalFromContext(r.Context())
-					w.Header().Set("Content-Type", "application/json; charset=utf-8")
-					json.NewEncoder(w).Encode(map[string]any{
-						"status":   "authenticated",
-						"user_id":  p.UserID,
-						"role":     p.Role,
-						"dev_mode": p.DevMode,
-					})
-				})
-			})
-		}
+		// registerExtraRoutes is a no-op unless built with -tags testendpoints,
+		// which compiles in the /_health/auth debug endpoint.
+		registerExtraRoutes(r, authChain, writeJSONAuthError)
 	})
 	srv := server.New(cfg, router)
 
