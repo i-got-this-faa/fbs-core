@@ -173,15 +173,22 @@ func TestAuthIntegration_ValidBearerToken(t *testing.T) {
 		t.Fatalf("issue token: %v", err)
 	}
 
+	sigv4, err := auth.IssueSigV4Credentials()
+	if err != nil {
+		t.Fatalf("issue sigv4 credentials: %v", err)
+	}
+
 	user := &metadata.User{
-		ID:          "user-test",
-		DisplayName: "Test User",
-		AccessKeyID: issued.AccessKeyID,
-		SecretHash:  issued.SecretHash,
-		Role:        "member",
-		IsActive:    true,
-		CreatedAt:   time.Now().UTC(),
-		UpdatedAt:   time.Now().UTC(),
+		ID:               "user-test",
+		DisplayName:      "Test User",
+		AccessKeyID:      issued.AccessKeyID,
+		SecretHash:       issued.SecretHash,
+		SigV4AccessKeyID: sigv4.AccessKeyID,
+		SigV4SecretKey:   sigv4.SecretKey,
+		Role:             "member",
+		IsActive:         true,
+		CreatedAt:        time.Now().UTC(),
+		UpdatedAt:        time.Now().UTC(),
 	}
 	if err := metadata.NewUserRepository(db).Create(context.Background(), user); err != nil {
 		t.Fatalf("create user: %v", err)
@@ -261,15 +268,22 @@ func TestAuthIntegration_InactiveUser(t *testing.T) {
 		t.Fatalf("issue token: %v", err)
 	}
 
+	sigv4, err := auth.IssueSigV4Credentials()
+	if err != nil {
+		t.Fatalf("issue sigv4 credentials: %v", err)
+	}
+
 	user := &metadata.User{
-		ID:          "user-inactive",
-		DisplayName: "Inactive User",
-		AccessKeyID: issued.AccessKeyID,
-		SecretHash:  issued.SecretHash,
-		Role:        "member",
-		IsActive:    false,
-		CreatedAt:   time.Now().UTC(),
-		UpdatedAt:   time.Now().UTC(),
+		ID:               "user-inactive",
+		DisplayName:      "Inactive User",
+		AccessKeyID:      issued.AccessKeyID,
+		SecretHash:       issued.SecretHash,
+		SigV4AccessKeyID: sigv4.AccessKeyID,
+		SigV4SecretKey:   sigv4.SecretKey,
+		Role:             "member",
+		IsActive:         false,
+		CreatedAt:        time.Now().UTC(),
+		UpdatedAt:        time.Now().UTC(),
 	}
 	if err := metadata.NewUserRepository(db).Create(context.Background(), user); err != nil {
 		t.Fatalf("create user: %v", err)
@@ -439,9 +453,12 @@ func (f *failingUserRepo) GetByID(_ context.Context, _ string) (*metadata.User, 
 func (f *failingUserRepo) GetByAccessKeyID(_ context.Context, _ string) (*metadata.User, error) {
 	return nil, errors.New("database connection lost")
 }
-func (f *failingUserRepo) List(_ context.Context) ([]metadata.User, error)  { return nil, nil }
-func (f *failingUserRepo) Update(_ context.Context, _ *metadata.User) error { return nil }
-func (f *failingUserRepo) Delete(_ context.Context, _ string) error         { return nil }
+func (f *failingUserRepo) GetBySigV4AccessKeyID(_ context.Context, _ string) (*metadata.User, error) {
+	return nil, errors.New("database connection lost")
+}
+func (f *failingUserRepo) List(_ context.Context) ([]metadata.User, error)        { return nil, nil }
+func (f *failingUserRepo) Update(_ context.Context, _ *metadata.User) error       { return nil }
+func (f *failingUserRepo) Delete(_ context.Context, _ string) error               { return nil }
 
 func testConfig() config.Config {
 	cfg := config.Default()

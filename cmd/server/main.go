@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"math"
@@ -56,11 +57,13 @@ func main() {
 	}
 
 	userRepo := metadata.NewUserRepository(db)
+	sigv4Repo := metadata.NewSigV4UserRepository(db)
 	var authenticators []auth.Authenticator
 	if cfg.DevMode {
 		authenticators = append(authenticators, &auth.DevAuthenticator{})
 	}
 	authenticators = append(authenticators, &auth.BearerAuthenticator{Repo: userRepo})
+	authenticators = append(authenticators, &auth.SigV4Authenticator{Repo: sigv4Repo})
 	authChain := &auth.ChainAuthenticator{Authenticators: authenticators}
 
 	bucketRepo := metadata.NewBucketRepository(db)
@@ -76,6 +79,21 @@ func main() {
 			s3Routes.Use(auth.RequireAuthentication(authChain, writeS3AuthError))
 			s3.RegisterObjectRoutes(s3Routes, objectHandlers)
 		})
+		if os.Getenv("FBS_TEST_ENDPOINTS") == "1" {
+			r.Group(func(testRoutes chi.Router) {
+				testRoutes.Use(auth.RequireAuthentication(authChain, writeJSONAuthError))
+				testRoutes.Get("/_health/auth", func(w http.ResponseWriter, r *http.Request) {
+					p, _ := auth.PrincipalFromContext(r.Context())
+					w.Header().Set("Content-Type", "application/json; charset=utf-8")
+					json.NewEncoder(w).Encode(map[string]any{
+						"status":   "authenticated",
+						"user_id":  p.UserID,
+						"role":     p.Role,
+						"dev_mode": p.DevMode,
+					})
+				})
+			})
+		}
 	})
 	srv := server.New(cfg, router)
 
@@ -131,6 +149,24 @@ func writeS3AuthError(w http.ResponseWriter, r *http.Request, err error) {
 	default:
 		s3.WriteS3Error(w, r, http.StatusUnauthorized, "AccessDenied", "Access denied.")
 	}
+}
+
+func writeJSONAuthError(w http.ResponseWriter, _ *http.Request, err error) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	switch {
+	case errors.Is(err, auth.ErrMissingAuth):
+		w.Header().Set("WWW-Authenticate", `Bearer realm="fbs"`)
+		w.WriteHeader(http.StatusUnauthorized)
+	case errors.Is(err, auth.ErrUnsupportedScheme):
+		w.WriteHeader(http.StatusUnauthorized)
+	case errors.Is(err, auth.ErrInactiveUser), errors.Is(err, auth.ErrForbidden):
+		w.WriteHeader(http.StatusForbidden)
+	case errors.Is(err, auth.ErrInternal):
+		w.WriteHeader(http.StatusInternalServerError)
+	default:
+		w.WriteHeader(http.StatusUnauthorized)
+	}
+	json.NewEncoder(w).Encode(map[string]string{"error": "auth failed"})
 }
 
 func listKnownStoragePaths(ctx context.Context, repo metadata.ObjectRepository, bucketName string) ([]string, error) {

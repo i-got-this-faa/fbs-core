@@ -45,6 +45,25 @@ func TestIssueBearerToken(t *testing.T) {
 	}
 }
 
+func TestIssueSigV4Credentials(t *testing.T) {
+	t.Parallel()
+
+	creds, err := IssueSigV4Credentials()
+	if err != nil {
+		t.Fatalf("IssueSigV4Credentials() error = %v", err)
+	}
+
+	if creds.AccessKeyID == "" {
+		t.Error("AccessKeyID is empty")
+	}
+	if !strings.HasPrefix(creds.AccessKeyID, sigV4Prefix) {
+		t.Errorf("AccessKeyID %q does not have expected prefix", creds.AccessKeyID)
+	}
+	if creds.SecretKey == "" {
+		t.Error("SecretKey is empty")
+	}
+}
+
 func TestVerifySecret(t *testing.T) {
 	t.Parallel()
 
@@ -92,7 +111,8 @@ func TestCreateBearerTokenPersistsActiveUser(t *testing.T) {
 	defer db.Close()
 
 	repo := metadata.NewUserRepository(db)
-	issued, user, err := CreateBearerToken(context.Background(), repo, "Admin User", "admin")
+	sigv4Repo := metadata.NewSigV4UserRepository(db)
+	issued, sigv4Creds, user, err := CreateBearerToken(context.Background(), repo, "Admin User", "admin")
 	if err != nil {
 		t.Fatalf("CreateBearerToken() error = %v", err)
 	}
@@ -117,7 +137,34 @@ func TestCreateBearerTokenPersistsActiveUser(t *testing.T) {
 	if stored.SecretHash != issued.SecretHash {
 		t.Error("persisted hash does not match issued hash")
 	}
+	if stored.SigV4AccessKeyID == "" {
+		t.Error("expected persisted user to have sigv4_access_key_id")
+	}
+	// SigV4 secret is never retrievable through ordinary reads;
+	// it is presented once at creation time via SigV4Credentials.
+	if stored.SigV4SecretKey != "" {
+		t.Error("expected SigV4SecretKey to be cleared on ordinary reads")
+	}
 	if strings.Contains(stored.SecretHash, issued.RawToken) {
 		t.Error("stored hash should not contain raw token")
+	}
+	if sigv4Creds.AccessKeyID == "" {
+		t.Error("expected returned SigV4 AccessKeyID to be non-empty")
+	}
+	if sigv4Creds.SecretKey == "" {
+		t.Error("expected returned SigV4 SecretKey to be non-empty")
+	}
+	if sigv4Creds.AccessKeyID != stored.SigV4AccessKeyID {
+		t.Error("returned SigV4 AccessKeyID does not match stored value")
+	}
+	// Secret is intentionally cleared on ordinary reads; verify via auth lookup below.
+
+	// Verify the secret is retrievable only via the auth-specific lookup.
+	authUser, err := sigv4Repo.GetBySigV4AccessKeyID(context.Background(), sigv4Creds.AccessKeyID)
+	if err != nil {
+		t.Fatalf("GetBySigV4AccessKeyID: %v", err)
+	}
+	if authUser.SigV4SecretKey != sigv4Creds.SecretKey {
+		t.Errorf("auth lookup secret = %q, want %q", authUser.SigV4SecretKey, sigv4Creds.SecretKey)
 	}
 }

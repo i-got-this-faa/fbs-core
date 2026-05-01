@@ -51,20 +51,24 @@ Use `database/sql` with `github.com/mattn/go-sqlite3` (CGo) or `modernc.org/sqli
 
 ```sql
 CREATE TABLE IF NOT EXISTS users (
-    id            TEXT PRIMARY KEY,
-    display_name  TEXT NOT NULL,
-    access_key_id TEXT NOT NULL UNIQUE,
-    secret_hash   TEXT NOT NULL,
-    role          TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('admin', 'member')),
-    is_active     INTEGER NOT NULL DEFAULT 1,
-    created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    id                  TEXT PRIMARY KEY,
+    display_name        TEXT NOT NULL,
+    access_key_id       TEXT NOT NULL UNIQUE,
+    secret_hash         TEXT NOT NULL,
+    sigv4_access_key_id TEXT UNIQUE,
+    sigv4_secret_key    TEXT,
+    role                TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('admin', 'member')),
+    is_active           INTEGER NOT NULL DEFAULT 1,
+    created_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
 - `id`: UUID v4 primary key
-- `access_key_id`: unique identifier used for S3 SigV4 auth (F5) and bearer token lookup (F4)
-- `secret_hash`: SHA-256 hash of the secret/token (never stored in plaintext per spec)
+- `access_key_id`: unique identifier used for bearer token lookup (F4)
+- `secret_hash`: SHA-256 hash of the bearer token secret (never stored in plaintext per spec)
+- `sigv4_access_key_id`: separate unique identifier used for AWS SigV4 auth (F5)
+- `sigv4_secret_key`: raw secret key for SigV4 HMAC verification. Stored plaintext because SigV4 signature validation requires the exact secret used by the client. Presented once at creation and never retrievable again.
 - `role`: authorization level (`admin` for management API, `member` for S3 ops)
 - `is_active`: soft-disable without deletion
 

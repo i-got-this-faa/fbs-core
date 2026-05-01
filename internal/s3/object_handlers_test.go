@@ -46,7 +46,7 @@ func newObjectTestEnv(t *testing.T) objectTestEnv {
 	t.Cleanup(func() { _ = db.Close() })
 
 	userRepo := metadata.NewUserRepository(db)
-	_, user, err := auth.CreateBearerToken(context.Background(), userRepo, "Test User", "admin")
+	_, _, user, err := auth.CreateBearerToken(context.Background(), userRepo, "Test User", "admin")
 	if err != nil {
 		t.Fatalf("create bearer token: %v", err)
 	}

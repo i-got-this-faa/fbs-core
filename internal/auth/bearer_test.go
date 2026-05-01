@@ -37,15 +37,22 @@ func createTestUser(t *testing.T, repo metadata.UserRepository, displayName, rol
 		t.Fatalf("issue token: %v", err)
 	}
 
+	sigv4, err := IssueSigV4Credentials()
+	if err != nil {
+		t.Fatalf("issue sigv4 credentials: %v", err)
+	}
+
 	user := &metadata.User{
-		ID:          "user-" + displayName,
-		DisplayName: displayName,
-		AccessKeyID: issued.AccessKeyID,
-		SecretHash:  issued.SecretHash,
-		Role:        role,
-		IsActive:    isActive,
-		CreatedAt:   time.Now().UTC(),
-		UpdatedAt:   time.Now().UTC(),
+		ID:               "user-" + displayName,
+		DisplayName:      displayName,
+		AccessKeyID:      issued.AccessKeyID,
+		SecretHash:       issued.SecretHash,
+		SigV4AccessKeyID: sigv4.AccessKeyID,
+		SigV4SecretKey:   sigv4.SecretKey,
+		Role:             role,
+		IsActive:         isActive,
+		CreatedAt:        time.Now().UTC(),
+		UpdatedAt:        time.Now().UTC(),
 	}
 
 	if err := repo.Create(context.Background(), user); err != nil {
@@ -315,6 +322,9 @@ func (f *failingUserRepo) GetByID(_ context.Context, _ string) (*metadata.User, 
 	return nil, nil
 }
 func (f *failingUserRepo) GetByAccessKeyID(_ context.Context, _ string) (*metadata.User, error) {
+	return nil, errors.New("database connection lost")
+}
+func (f *failingUserRepo) GetBySigV4AccessKeyID(_ context.Context, _ string) (*metadata.User, error) {
 	return nil, errors.New("database connection lost")
 }
 func (f *failingUserRepo) List(_ context.Context) ([]metadata.User, error)  { return nil, nil }

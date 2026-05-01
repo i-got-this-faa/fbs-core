@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -15,14 +16,16 @@ import (
 // We only create the users table here — other tables are tested in their own files.
 const createUsersTable = `
 CREATE TABLE IF NOT EXISTS users (
-    id            TEXT PRIMARY KEY,
-    display_name  TEXT NOT NULL,
-    access_key_id TEXT NOT NULL UNIQUE,
-    secret_hash   TEXT NOT NULL,
-    role          TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('admin', 'member')),
-    is_active     INTEGER NOT NULL DEFAULT 1,
-    created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    id                  TEXT PRIMARY KEY,
+    display_name        TEXT NOT NULL,
+    access_key_id       TEXT NOT NULL UNIQUE,
+    secret_hash         TEXT NOT NULL,
+    sigv4_access_key_id TEXT UNIQUE,
+    sigv4_secret_key    TEXT,
+    role                TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('admin', 'member')),
+    is_active           INTEGER NOT NULL DEFAULT 1,
+    created_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );`
 
 // openTestDB opens an in-memory SQLite database and creates the users table.
@@ -34,7 +37,7 @@ func openTestDB(t *testing.T) *sql.DB {
 		t.Fatalf("open in-memory db: %v", err)
 	}
 
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 
 	if _, err := db.Exec(createUsersTable); err != nil {
 		t.Fatalf("create users table: %v", err)
@@ -47,14 +50,16 @@ func openTestDB(t *testing.T) *sql.DB {
 func newTestUser() *User {
 	now := time.Now().UTC().Truncate(time.Second)
 	return &User{
-		ID:          uuid.NewString(),
-		DisplayName: "Alice",
-		AccessKeyID: "AKIAIOSFODNN7EXAMPLE",
-		SecretHash:  "sha256hashvalue",
-		Role:        "member",
-		IsActive:    true,
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		ID:               uuid.NewString(),
+		DisplayName:      "Alice",
+		AccessKeyID:      "AKIAIOSFODNN7EXAMPLE",
+		SecretHash:       "sha256hashvalue",
+		SigV4AccessKeyID: "fbsv4_testuser_001",
+		SigV4SecretKey:   "sigv4secretvalue",
+		Role:             "member",
+		IsActive:         true,
+		CreatedAt:        now,
+		UpdatedAt:        now,
 	}
 }
 
@@ -85,6 +90,37 @@ func TestUserCreate_DuplicateAccessKeyID(t *testing.T) {
 	}
 }
 
+func TestUserCreate_MultipleWithoutSigV4(t *testing.T) {
+	repo := NewUserRepository(openTestDB(t))
+	ctx := context.Background()
+
+	for i := 0; i < 3; i++ {
+		u := &User{
+			ID:             uuid.NewString(),
+			DisplayName:    fmt.Sprintf("NoSigV4 %d", i),
+			AccessKeyID:    fmt.Sprintf("key_no_sigv4_%d", i),
+			SecretHash:     "hash",
+			SigV4AccessKeyID: "",
+			SigV4SecretKey:   "",
+			Role:           "member",
+			IsActive:       true,
+			CreatedAt:      time.Now().UTC().Truncate(time.Second),
+			UpdatedAt:      time.Now().UTC().Truncate(time.Second),
+		}
+		if err := repo.Create(ctx, u); err != nil {
+			t.Fatalf("Create user %d: %v", i, err)
+		}
+	}
+
+	users, err := repo.List(ctx)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(users) != 3 {
+		t.Errorf("expected 3 users, got %d", len(users))
+	}
+}
+
 func TestUserGetByID(t *testing.T) {
 	repo := NewUserRepository(openTestDB(t))
 	ctx := context.Background()
@@ -109,6 +145,61 @@ func TestUserGetByID_NotFound(t *testing.T) {
 	_, err := repo.GetByID(ctx, "nonexistent-id")
 	if !errors.Is(err, ErrUserNotFound) {
 		t.Fatalf("expected ErrUserNotFound, got %v", err)
+	}
+}
+
+func TestUserRead_LegacyUserWithNullSigV4(t *testing.T) {
+	repo := NewUserRepository(openTestDB(t))
+	ctx := context.Background()
+
+	// Simulate a pre-F5 user with NULL sigv4 columns
+	u := &User{
+		ID:             uuid.NewString(),
+		DisplayName:    "Legacy User",
+		AccessKeyID:    "AKIA_LEGACY",
+		SecretHash:     "legacyhash",
+		SigV4AccessKeyID: "",
+		SigV4SecretKey:   "",
+		Role:           "member",
+		IsActive:       true,
+		CreatedAt:      time.Now().UTC().Truncate(time.Second),
+		UpdatedAt:      time.Now().UTC().Truncate(time.Second),
+	}
+	if err := repo.Create(ctx, u); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	// Verify GetByID can read the user back
+	got, err := repo.GetByID(ctx, u.ID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+	if got.SigV4AccessKeyID != "" {
+		t.Errorf("SigV4AccessKeyID = %q, want empty string", got.SigV4AccessKeyID)
+	}
+	if got.SigV4SecretKey != "" {
+		t.Errorf("SigV4SecretKey = %q, want empty string", got.SigV4SecretKey)
+	}
+
+	// Verify GetByAccessKeyID can read the user back
+	got, err = repo.GetByAccessKeyID(ctx, u.AccessKeyID)
+	if err != nil {
+		t.Fatalf("GetByAccessKeyID: %v", err)
+	}
+	if got.SigV4AccessKeyID != "" {
+		t.Errorf("GetByAccessKeyID SigV4AccessKeyID = %q, want empty string", got.SigV4AccessKeyID)
+	}
+
+	// Verify List can read the user back
+	users, err := repo.List(ctx)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(users) != 1 {
+		t.Fatalf("expected 1 user, got %d", len(users))
+	}
+	if users[0].SigV4AccessKeyID != "" {
+		t.Errorf("List SigV4AccessKeyID = %q, want empty string", users[0].SigV4AccessKeyID)
 	}
 }
 
@@ -139,6 +230,39 @@ func TestUserGetByAccessKeyID_NotFound(t *testing.T) {
 	}
 }
 
+func TestUserGetBySigV4AccessKeyID(t *testing.T) {
+	db := openTestDB(t)
+	repo := NewUserRepository(db)
+	sigv4Repo := NewSigV4UserRepository(db)
+	ctx := context.Background()
+
+	want := newTestUser()
+	if err := repo.Create(ctx, want); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	got, err := sigv4Repo.GetBySigV4AccessKeyID(ctx, want.SigV4AccessKeyID)
+	if err != nil {
+		t.Fatalf("GetBySigV4AccessKeyID: %v", err)
+	}
+
+	assertUsersEqual(t, want, got)
+	// GetBySigV4AccessKeyID is the only read path that returns the secret.
+	if got.SigV4SecretKey != want.SigV4SecretKey {
+		t.Errorf("SigV4SecretKey: want %q, got %q", want.SigV4SecretKey, got.SigV4SecretKey)
+	}
+}
+
+func TestUserGetBySigV4AccessKeyID_NotFound(t *testing.T) {
+	repo := NewSigV4UserRepository(openTestDB(t))
+	ctx := context.Background()
+
+	_, err := repo.GetBySigV4AccessKeyID(ctx, "NO_SUCH_KEY")
+	if !errors.Is(err, ErrUserNotFound) {
+		t.Fatalf("expected ErrUserNotFound, got %v", err)
+	}
+}
+
 func TestUserList(t *testing.T) {
 	repo := NewUserRepository(openTestDB(t))
 	ctx := context.Background()
@@ -155,14 +279,16 @@ func TestUserList(t *testing.T) {
 	// Insert two users.
 	u1 := newTestUser()
 	u2 := &User{
-		ID:          uuid.NewString(),
-		DisplayName: "Bob",
-		AccessKeyID: "AKIAI2NDUSER",
-		SecretHash:  "anotherhash",
-		Role:        "admin",
-		IsActive:    false,
-		CreatedAt:   time.Now().UTC().Truncate(time.Second),
-		UpdatedAt:   time.Now().UTC().Truncate(time.Second),
+		ID:               uuid.NewString(),
+		DisplayName:      "Bob",
+		AccessKeyID:      "AKIAI2NDUSER",
+		SecretHash:       "anotherhash",
+		SigV4AccessKeyID: "fbsv4_testuser_002",
+		SigV4SecretKey:   "anothersigv4secret",
+		Role:             "admin",
+		IsActive:         false,
+		CreatedAt:        time.Now().UTC().Truncate(time.Second),
+		UpdatedAt:        time.Now().UTC().Truncate(time.Second),
 	}
 
 	for _, u := range []*User{u1, u2} {
@@ -222,6 +348,57 @@ func TestUserUpdate_NotFound(t *testing.T) {
 
 	if err := repo.Update(ctx, ghost); !errors.Is(err, ErrUserNotFound) {
 		t.Fatalf("expected ErrUserNotFound, got %v", err)
+	}
+}
+
+func TestUserUpdate_LegacyUserPreservesNullSigV4(t *testing.T) {
+	repo := NewUserRepository(openTestDB(t))
+	ctx := context.Background()
+
+	// Simulate two pre-F5 users by inserting rows without SigV4 columns.
+	for i := 0; i < 2; i++ {
+		id := uuid.NewString()
+		_, err := repo.(*sqliteUserRepository).db.ExecContext(ctx,
+			`INSERT INTO users (id, display_name, access_key_id, secret_hash, role) VALUES (?, ?, ?, ?, ?)`,
+			id,
+			fmt.Sprintf("Legacy %d", i),
+			fmt.Sprintf("legacy_key_%d", i),
+			"hash",
+			"member",
+		)
+		if err != nil {
+			t.Fatalf("insert legacy user %d: %v", i, err)
+		}
+
+		// Read back via repository (NULL -> empty string in Go)
+		u, err := repo.GetByID(ctx, id)
+		if err != nil {
+			t.Fatalf("GetByID legacy user %d: %v", i, err)
+		}
+		if u.SigV4AccessKeyID != "" || u.SigV4SecretKey != "" {
+			t.Fatalf("legacy user %d: expected empty sigv4 fields", i)
+		}
+
+		// Update the user — must not fail on unique index collision
+		u.DisplayName = fmt.Sprintf("Updated %d", i)
+		if err := repo.Update(ctx, u); err != nil {
+			t.Fatalf("Update legacy user %d: %v", i, err)
+		}
+
+		// Verify NULL was preserved in the database
+		var keyNull, secretNull bool
+		err = repo.(*sqliteUserRepository).db.QueryRowContext(ctx,
+			`SELECT sigv4_access_key_id IS NULL, sigv4_secret_key IS NULL FROM users WHERE id = ?`, id,
+		).Scan(&keyNull, &secretNull)
+		if err != nil {
+			t.Fatalf("check nulls for legacy user %d: %v", i, err)
+		}
+		if !keyNull {
+			t.Errorf("legacy user %d: sigv4_access_key_id should be NULL", i)
+		}
+		if !secretNull {
+			t.Errorf("legacy user %d: sigv4_secret_key should be NULL", i)
+		}
 	}
 }
 
@@ -310,6 +487,9 @@ func assertUsersEqual(t *testing.T, want, got *User) {
 	}
 	if got.SecretHash != want.SecretHash {
 		t.Errorf("SecretHash: want %q, got %q", want.SecretHash, got.SecretHash)
+	}
+	if got.SigV4AccessKeyID != want.SigV4AccessKeyID {
+		t.Errorf("SigV4AccessKeyID: want %q, got %q", want.SigV4AccessKeyID, got.SigV4AccessKeyID)
 	}
 	if got.Role != want.Role {
 		t.Errorf("Role: want %q, got %q", want.Role, got.Role)
