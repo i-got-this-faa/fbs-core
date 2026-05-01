@@ -74,6 +74,7 @@ func main() {
 	router := httpapi.NewRouter(cfg, logger, func(r chi.Router) {
 		r.Group(func(s3Routes chi.Router) {
 			s3Routes.Use(auth.RequireAuthentication(authChain, writeS3AuthError))
+			s3.RegisterBucketRoutes(s3Routes, objectHandlers)
 			s3.RegisterObjectRoutes(s3Routes, objectHandlers)
 		})
 	})

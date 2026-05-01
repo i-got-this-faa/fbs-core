@@ -247,3 +247,131 @@ func TestObjectList_PrefixWithWildcards(t *testing.T) {
 		t.Fatalf("unexpected underscore prefix results: %+v", results)
 	}
 }
+
+func TestObjectListDelimited(t *testing.T) {
+	db := openTestDBWithObjects(t)
+	repo := NewObjectRepository(db)
+	ctx := context.Background()
+
+	bucketName := insertTestBucket(t, db)
+
+	for _, key := range []string{"about.txt", "docs/a.txt", "docs/b.txt", "docs/nested/c.txt", "images/a.jpg"} {
+		if err := repo.Create(ctx, newTestObject(bucketName, key)); err != nil {
+			t.Fatalf("Create %s: %v", key, err)
+		}
+	}
+
+	entries, err := repo.ListDelimited(ctx, bucketName, "", "", "/", 100)
+	if err != nil {
+		t.Fatalf("ListDelimited: %v", err)
+	}
+
+	// Expect: about.txt (object), docs/ (prefix), images/ (prefix)
+	if len(entries) != 3 {
+		t.Fatalf("expected 3 entries, got %d: %+v", len(entries), entries)
+	}
+
+	if entries[0].VirtualKey != "about.txt" || entries[0].IsPrefix || entries[0].Object == nil {
+		t.Errorf("entry[0] = %+v, want direct object about.txt", entries[0])
+	}
+	if entries[1].VirtualKey != "docs/" || !entries[1].IsPrefix {
+		t.Errorf("entry[1] = %+v, want common prefix docs/", entries[1])
+	}
+	if entries[2].VirtualKey != "images/" || !entries[2].IsPrefix {
+		t.Errorf("entry[2] = %+v, want common prefix images/", entries[2])
+	}
+	// CursorKey for docs/ must be the last key under it.
+	if entries[1].CursorKey != "docs/nested/c.txt" {
+		t.Errorf("docs/ CursorKey = %q, want docs/nested/c.txt", entries[1].CursorKey)
+	}
+}
+
+func TestObjectListDelimited_Pagination(t *testing.T) {
+	db := openTestDBWithObjects(t)
+	repo := NewObjectRepository(db)
+	ctx := context.Background()
+
+	bucketName := insertTestBucket(t, db)
+
+	for _, key := range []string{"docs/a.txt", "docs/b.txt", "images/a.jpg"} {
+		if err := repo.Create(ctx, newTestObject(bucketName, key)); err != nil {
+			t.Fatalf("Create %s: %v", key, err)
+		}
+	}
+
+	// First page: maxKeys=1 should return docs/ with a cursor pointing to docs/b.txt.
+	page1, err := repo.ListDelimited(ctx, bucketName, "", "", "/", 1)
+	if err != nil {
+		t.Fatalf("ListDelimited page1: %v", err)
+	}
+	if len(page1) != 2 {
+		t.Fatalf("page1: expected 2 entries (1+1 for truncation detection), got %d", len(page1))
+	}
+	if page1[0].VirtualKey != "docs/" || !page1[0].IsPrefix {
+		t.Fatalf("page1[0] = %+v, want common prefix docs/", page1[0])
+	}
+	if page1[0].CursorKey != "docs/b.txt" {
+		t.Fatalf("page1[0].CursorKey = %q, want docs/b.txt", page1[0].CursorKey)
+	}
+
+	// Second page starting after the cursor of docs/.
+	page2, err := repo.ListDelimited(ctx, bucketName, "", page1[0].CursorKey, "/", 1)
+	if err != nil {
+		t.Fatalf("ListDelimited page2: %v", err)
+	}
+	if len(page2) != 1 {
+		t.Fatalf("page2: expected 1 entry, got %d", len(page2))
+	}
+	if page2[0].VirtualKey != "images/" || !page2[0].IsPrefix {
+		t.Fatalf("page2[0] = %+v, want common prefix images/", page2[0])
+	}
+}
+
+func TestObjectListDelimited_WithPrefix(t *testing.T) {
+	db := openTestDBWithObjects(t)
+	repo := NewObjectRepository(db)
+	ctx := context.Background()
+
+	bucketName := insertTestBucket(t, db)
+
+	for _, key := range []string{"docs/a.txt", "docs/nested/b.txt", "images/a.jpg"} {
+		if err := repo.Create(ctx, newTestObject(bucketName, key)); err != nil {
+			t.Fatalf("Create %s: %v", key, err)
+		}
+	}
+
+	entries, err := repo.ListDelimited(ctx, bucketName, "docs/", "", "/", 100)
+	if err != nil {
+		t.Fatalf("ListDelimited with prefix: %v", err)
+	}
+
+	// Expect: docs/a.txt (object), docs/nested/ (prefix)
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d: %+v", len(entries), entries)
+	}
+	if entries[0].VirtualKey != "docs/a.txt" || entries[0].IsPrefix {
+		t.Errorf("entry[0] = %+v, want direct object docs/a.txt", entries[0])
+	}
+	if entries[1].VirtualKey != "docs/nested/" || !entries[1].IsPrefix {
+		t.Errorf("entry[1] = %+v, want common prefix docs/nested/", entries[1])
+	}
+}
+
+func TestObjectListDelimited_MaxKeysZero(t *testing.T) {
+	db := openTestDBWithObjects(t)
+	repo := NewObjectRepository(db)
+	ctx := context.Background()
+
+	bucketName := insertTestBucket(t, db)
+	if err := repo.Create(ctx, newTestObject(bucketName, "a.txt")); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	entries, err := repo.ListDelimited(ctx, bucketName, "", "", "/", 0)
+	if err != nil {
+		t.Fatalf("ListDelimited maxKeys=0: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("expected 0 entries, got %d", len(entries))
+	}
+}
