@@ -1,9 +1,11 @@
 package s3
 
 import (
+	"encoding/base64"
 	"encoding/xml"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -224,6 +226,35 @@ func TestListObjectsV2NoSuchBucket(t *testing.T) {
 		t.Fatalf("status = %d, want 404; body=%s", resp.Code, resp.Body.String())
 	}
 	assertS3ErrorCode(t, resp.Body.Bytes(), codeNoSuchBucket)
+}
+
+func TestListObjectsV2OversizedContinuationTokenRejected(t *testing.T) {
+	t.Parallel()
+
+	env := newObjectTestEnv(t)
+	env.mustPut(t, "a.txt", "a")
+
+	// Token whose base64 length exceeds maxContinuationTokenLen (1500).
+	oversizedToken := strings.Repeat("A", maxContinuationTokenLen+1)
+	resp := env.do(t, http.MethodGet, "/"+env.bucket+"?list-type=2&continuation-token="+oversizedToken, "", nil)
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body=%s", resp.Code, resp.Body.String())
+	}
+}
+
+func TestListObjectsV2OversizedDecodedKeyRejected(t *testing.T) {
+	t.Parallel()
+
+	env := newObjectTestEnv(t)
+	env.mustPut(t, "a.txt", "a")
+
+	// Valid base64 of a byte slice larger than maxContinuationKeyLen (1024).
+	bigKey := strings.Repeat("k", maxContinuationKeyLen+1)
+	encodedToken := base64.RawURLEncoding.EncodeToString([]byte(bigKey))
+	resp := env.do(t, http.MethodGet, "/"+env.bucket+"?list-type=2&continuation-token="+encodedToken, "", nil)
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body=%s", resp.Code, resp.Body.String())
+	}
 }
 
 func decodeListBucketResult(t *testing.T, body []byte) listBucketResult {

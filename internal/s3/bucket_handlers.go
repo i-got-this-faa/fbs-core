@@ -18,6 +18,14 @@ const (
 	defaultListMaxKeys  = 1000
 	maxListKeys         = 1000
 	listObjectsPageSize = 1000
+
+	// maxContinuationTokenLen is the maximum accepted length of a base64-encoded
+	// continuation token. S3 keys are at most 1024 bytes; base64 overhead is ~4/3,
+	// so 1500 chars is a safe upper bound that still rejects oversized inputs early.
+	maxContinuationTokenLen = 1500
+	// maxContinuationKeyLen is the maximum accepted length of the decoded key
+	// inside a continuation token, matching the S3 object-key limit.
+	maxContinuationKeyLen = 1024
 )
 
 type listBucketResult struct {
@@ -267,9 +275,15 @@ func encodeContinuationToken(key string) string {
 }
 
 func decodeContinuationToken(token string) (string, error) {
+	if len(token) > maxContinuationTokenLen {
+		return "", errors.New("continuation token too large")
+	}
 	decoded, err := base64.RawURLEncoding.DecodeString(token)
 	if err != nil {
 		return "", err
+	}
+	if len(decoded) > maxContinuationKeyLen {
+		return "", errors.New("continuation token decoded key too large")
 	}
 	return string(decoded), nil
 }
