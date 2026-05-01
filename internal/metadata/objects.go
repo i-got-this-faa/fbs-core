@@ -267,7 +267,6 @@ LIMIT ?`
 	return entries, nil
 }
 
-
 func (r *sqliteObjectRepository) Delete(ctx context.Context, bucketName, key string) error {
 	const q = `DELETE FROM objects WHERE bucket_name = ? AND key = ?`
 
