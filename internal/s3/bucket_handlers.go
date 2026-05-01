@@ -56,12 +56,14 @@ type listEntry struct {
 }
 
 type listObjectsV2Params struct {
-	prefix            string
-	delimiter         string
-	continuationToken string
-	startAfter        string
-	encodingType      string
-	maxKeys           int
+	prefix             string
+	delimiter          string
+	continuationToken  string
+	startAfter         string
+	responseStartAfter string
+	hasStartAfter      bool
+	encodingType       string
+	maxKeys            int
 }
 
 func (h *ObjectHandlers) ListObjectsV2(w http.ResponseWriter, r *http.Request) {
@@ -114,6 +116,8 @@ func parseListObjectsV2Params(r *http.Request) (listObjectsV2Params, error) {
 	}
 
 	startAfter := query.Get("start-after")
+	responseStartAfter := startAfter
+	hasStartAfter := query.Has("start-after")
 	continuationToken := query.Get("continuation-token")
 	if continuationToken != "" {
 		decodedToken, err := decodeContinuationToken(continuationToken)
@@ -124,12 +128,14 @@ func parseListObjectsV2Params(r *http.Request) (listObjectsV2Params, error) {
 	}
 
 	return listObjectsV2Params{
-		prefix:            query.Get("prefix"),
-		delimiter:         query.Get("delimiter"),
-		continuationToken: continuationToken,
-		startAfter:        startAfter,
-		encodingType:      encodingType,
-		maxKeys:           maxKeys,
+		prefix:             query.Get("prefix"),
+		delimiter:          query.Get("delimiter"),
+		continuationToken:  continuationToken,
+		startAfter:         startAfter,
+		responseStartAfter: responseStartAfter,
+		hasStartAfter:      hasStartAfter,
+		encodingType:       encodingType,
+		maxKeys:            maxKeys,
 	}, nil
 }
 
@@ -169,7 +175,7 @@ func (h *ObjectHandlers) listDelimitedObjectsV2Entries(r *http.Request, bucketNa
 		}
 
 		for i := range objects {
-			addDelimitedEntry(objects[i], params.prefix, params.delimiter, &objectEntries, commonPrefixCursors)
+			addDelimitedEntry(objects[i], params.prefix, params.delimiter, params.startAfter, &objectEntries, commonPrefixCursors)
 		}
 
 		entries := mergeDelimitedEntries(objectEntries, commonPrefixCursors)
@@ -181,7 +187,7 @@ func (h *ObjectHandlers) listDelimitedObjectsV2Entries(r *http.Request, bucketNa
 	}
 }
 
-func addDelimitedEntry(object metadata.Object, prefix, delimiter string, objectEntries *[]listEntry, commonPrefixCursors map[string]string) {
+func addDelimitedEntry(object metadata.Object, prefix, delimiter, startAfter string, objectEntries *[]listEntry, commonPrefixCursors map[string]string) {
 	key := object.Key
 	remainder := strings.TrimPrefix(key, prefix)
 	delimiterIndex := strings.Index(remainder, delimiter)
@@ -191,6 +197,9 @@ func addDelimitedEntry(object metadata.Object, prefix, delimiter string, objectE
 	}
 
 	commonPrefix := prefix + remainder[:delimiterIndex+len(delimiter)]
+	if commonPrefix <= startAfter {
+		return
+	}
 	if key > commonPrefixCursors[commonPrefix] {
 		commonPrefixCursors[commonPrefix] = key
 	}
@@ -219,8 +228,10 @@ func buildListBucketResult(bucketName string, params listObjectsV2Params, entrie
 		Delimiter:         encodeListValue(params.delimiter, params.encodingType),
 		IsTruncated:       false,
 		ContinuationToken: params.continuationToken,
-		StartAfter:        encodeListValue(params.startAfter, params.encodingType),
 		EncodingType:      params.encodingType,
+	}
+	if params.hasStartAfter {
+		result.StartAfter = encodeListValue(params.responseStartAfter, params.encodingType)
 	}
 
 	visibleEntries := entries
@@ -267,7 +278,7 @@ func encodeListValue(value, encodingType string) string {
 	if encodingType != "url" {
 		return value
 	}
-	return url.QueryEscape(value)
+	return strings.ReplaceAll(url.QueryEscape(value), "+", "%20")
 }
 
 func chiBucketParam(r *http.Request) string {

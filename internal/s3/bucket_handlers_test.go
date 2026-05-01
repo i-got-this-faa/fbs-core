@@ -2,6 +2,7 @@ package s3
 
 import (
 	"encoding/xml"
+	"fmt"
 	"net/http"
 	"testing"
 )
@@ -136,6 +137,82 @@ func TestListObjectsV2DelimiterPaginationSkipsCommonPrefixChildren(t *testing.T)
 	}
 	second := decodeListBucketResult(t, secondResp.Body.Bytes())
 	assertStringSlice(t, listResultPrefixes(second), []string{"images/"})
+}
+
+func TestListObjectsV2DelimiterPaginationSkipsLargeCommonPrefixChildren(t *testing.T) {
+	t.Parallel()
+
+	env := newObjectTestEnv(t)
+	for index := range 1001 {
+		env.mustPut(t, fmt.Sprintf("docs/file-%04d.txt", index), "doc")
+	}
+	env.mustPut(t, "images/a.jpg", "jpg")
+
+	firstResp := env.do(t, http.MethodGet, "/"+env.bucket+"?list-type=2&delimiter=/&max-keys=1", "", nil)
+	if firstResp.Code != http.StatusOK {
+		t.Fatalf("first status = %d, want 200; body=%s", firstResp.Code, firstResp.Body.String())
+	}
+	first := decodeListBucketResult(t, firstResp.Body.Bytes())
+	assertStringSlice(t, listResultPrefixes(first), []string{"docs/"})
+	if !first.IsTruncated {
+		t.Fatal("expected first delimiter page to be truncated")
+	}
+
+	secondResp := env.do(t, http.MethodGet, "/"+env.bucket+"?list-type=2&delimiter=/&max-keys=1&continuation-token="+first.NextContinuationToken, "", nil)
+	if secondResp.Code != http.StatusOK {
+		t.Fatalf("second status = %d, want 200; body=%s", secondResp.Code, secondResp.Body.String())
+	}
+	second := decodeListBucketResult(t, secondResp.Body.Bytes())
+	assertStringSlice(t, listResultPrefixes(second), []string{"images/"})
+}
+
+func TestListObjectsV2ContinuationTokenDoesNotEchoStartAfter(t *testing.T) {
+	t.Parallel()
+
+	env := newObjectTestEnv(t)
+	env.mustPut(t, "a.txt", "a")
+	env.mustPut(t, "b.txt", "b")
+	env.mustPut(t, "c.txt", "c")
+
+	firstResp := env.do(t, http.MethodGet, "/"+env.bucket+"?list-type=2&max-keys=2", "", nil)
+	if firstResp.Code != http.StatusOK {
+		t.Fatalf("first status = %d, want 200; body=%s", firstResp.Code, firstResp.Body.String())
+	}
+	first := decodeListBucketResult(t, firstResp.Body.Bytes())
+
+	secondResp := env.do(t, http.MethodGet, "/"+env.bucket+"?list-type=2&continuation-token="+first.NextContinuationToken, "", nil)
+	if secondResp.Code != http.StatusOK {
+		t.Fatalf("second status = %d, want 200; body=%s", secondResp.Code, secondResp.Body.String())
+	}
+	second := decodeListBucketResult(t, secondResp.Body.Bytes())
+	if second.StartAfter != "" {
+		t.Fatalf("StartAfter = %q, want empty", second.StartAfter)
+	}
+}
+
+func TestListObjectsV2StartAfterEchoesWhenRequested(t *testing.T) {
+	t.Parallel()
+
+	env := newObjectTestEnv(t)
+	firstPutResp := env.do(t, http.MethodPut, "/"+env.bucket+"/a%20file.txt", "a", nil)
+	if firstPutResp.Code != http.StatusOK {
+		t.Fatalf("first put status = %d, want 200; body=%s", firstPutResp.Code, firstPutResp.Body.String())
+	}
+	secondPutResp := env.do(t, http.MethodPut, "/"+env.bucket+"/b%20file.txt", "b", nil)
+	if secondPutResp.Code != http.StatusOK {
+		t.Fatalf("second put status = %d, want 200; body=%s", secondPutResp.Code, secondPutResp.Body.String())
+	}
+
+	resp := env.do(t, http.MethodGet, "/"+env.bucket+"?list-type=2&start-after=a%20file.txt&encoding-type=url", "", nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", resp.Code, resp.Body.String())
+	}
+
+	result := decodeListBucketResult(t, resp.Body.Bytes())
+	if result.StartAfter != "a%20file.txt" {
+		t.Fatalf("StartAfter = %q, want a%%20file.txt", result.StartAfter)
+	}
+	assertStringSlice(t, listResultKeys(result), []string{"b%20file.txt"})
 }
 
 func TestListObjectsV2NoSuchBucket(t *testing.T) {
