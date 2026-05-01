@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/xml"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"sort"
@@ -276,14 +277,14 @@ func encodeContinuationToken(key string) string {
 
 func decodeContinuationToken(token string) (string, error) {
 	if len(token) > maxContinuationTokenLen {
-		return "", errors.New("continuation token too large")
+		return "", fmt.Errorf("continuation token exceeds maximum length of %d characters", maxContinuationTokenLen)
 	}
 	decoded, err := base64.RawURLEncoding.DecodeString(token)
 	if err != nil {
 		return "", err
 	}
 	if len(decoded) > maxContinuationKeyLen {
-		return "", errors.New("continuation token decoded key too large")
+		return "", fmt.Errorf("decoded continuation key exceeds maximum length of %d bytes", maxContinuationKeyLen)
 	}
 	return string(decoded), nil
 }
