@@ -68,6 +68,7 @@ func main() {
 
 	bucketRepo := metadata.NewBucketRepository(db)
 	objectHandlers := &s3.ObjectHandlers{
+		Users:   userRepo,
 		Buckets: bucketRepo,
 		Objects: objectRepo,
 		Storage: storageEngine,

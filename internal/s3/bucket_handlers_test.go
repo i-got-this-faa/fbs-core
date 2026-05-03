@@ -1,13 +1,135 @@
 package s3
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/xml"
 	"fmt"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/i-got-this-faa/fbs/internal/metadata"
 )
+
+func TestCreateBucket(t *testing.T) {
+	t.Parallel()
+
+	env := newObjectTestEnv(t)
+	resp := env.do(t, http.MethodPut, "/created-bucket", "", nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", resp.Code, resp.Body.String())
+	}
+	if got := resp.Header().Get("Location"); got != "/created-bucket" {
+		t.Fatalf("Location = %q, want /created-bucket", got)
+	}
+	if resp.Body.Len() != 0 {
+		t.Fatalf("body length = %d, want 0", resp.Body.Len())
+	}
+
+	bucket, err := env.buckets.GetByName(context.Background(), "created-bucket")
+	if err != nil {
+		t.Fatalf("get bucket: %v", err)
+	}
+	if bucket.OwnerID != "dev-user" {
+		t.Fatalf("OwnerID = %q, want dev-user", bucket.OwnerID)
+	}
+
+	devUser, err := env.users.GetByID(context.Background(), "dev-user")
+	if err != nil {
+		t.Fatalf("get dev user: %v", err)
+	}
+	if devUser.DisplayName != "Development User" {
+		t.Fatalf("DisplayName = %q, want Development User", devUser.DisplayName)
+	}
+}
+
+func TestCreateBucketWithUsEast1LocationConstraint(t *testing.T) {
+	t.Parallel()
+
+	env := newObjectTestEnv(t)
+	resp := env.do(t, http.MethodPut, "/regional-bucket", createBucketConfigXML("us-east-1"), map[string]string{
+		"Content-Type": "application/xml",
+	})
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", resp.Code, resp.Body.String())
+	}
+}
+
+func TestCreateBucketAlreadyOwnedByYou(t *testing.T) {
+	t.Parallel()
+
+	env := newObjectTestEnv(t)
+	first := env.do(t, http.MethodPut, "/owned-bucket", "", nil)
+	if first.Code != http.StatusOK {
+		t.Fatalf("first status = %d, want 200; body=%s", first.Code, first.Body.String())
+	}
+
+	second := env.do(t, http.MethodPut, "/owned-bucket", "", nil)
+	if second.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409; body=%s", second.Code, second.Body.String())
+	}
+	assertS3ErrorCode(t, second.Body.Bytes(), codeBucketAlreadyOwnedByYou)
+}
+
+func TestCreateBucketAlreadyExists(t *testing.T) {
+	t.Parallel()
+
+	env := newObjectTestEnv(t)
+	if err := env.buckets.Create(context.Background(), &metadata.Bucket{
+		Name:      "shared-bucket",
+		OwnerID:   env.userID,
+		CreatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("create existing bucket: %v", err)
+	}
+
+	resp := env.do(t, http.MethodPut, "/shared-bucket", "", nil)
+	if resp.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409; body=%s", resp.Code, resp.Body.String())
+	}
+	assertS3ErrorCode(t, resp.Body.Bytes(), codeBucketAlreadyExists)
+}
+
+func TestCreateBucketInvalidName(t *testing.T) {
+	t.Parallel()
+
+	env := newObjectTestEnv(t)
+	for _, name := range []string{"Abc", "ab", "bucket..name", "bucket-.name", "192.168.0.1"} {
+		resp := env.do(t, http.MethodPut, "/"+name, "", nil)
+		if resp.Code != http.StatusBadRequest {
+			t.Fatalf("name %q status = %d, want 400; body=%s", name, resp.Code, resp.Body.String())
+		}
+		assertS3ErrorCode(t, resp.Body.Bytes(), codeInvalidBucketName)
+	}
+}
+
+func TestCreateBucketMalformedXML(t *testing.T) {
+	t.Parallel()
+
+	env := newObjectTestEnv(t)
+	resp := env.do(t, http.MethodPut, "/xml-bucket", "<CreateBucketConfiguration>", map[string]string{
+		"Content-Type": "application/xml",
+	})
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body=%s", resp.Code, resp.Body.String())
+	}
+	assertS3ErrorCode(t, resp.Body.Bytes(), codeMalformedXML)
+}
+
+func TestCreateBucketInvalidLocationConstraint(t *testing.T) {
+	t.Parallel()
+
+	env := newObjectTestEnv(t)
+	resp := env.do(t, http.MethodPut, "/xml-bucket", createBucketConfigXML("eu-west-1"), map[string]string{
+		"Content-Type": "application/xml",
+	})
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body=%s", resp.Code, resp.Body.String())
+	}
+	assertS3ErrorCode(t, resp.Body.Bytes(), codeInvalidLocationConstraint)
+}
 
 func TestListObjectsV2(t *testing.T) {
 	t.Parallel()
@@ -292,4 +414,8 @@ func assertStringSlice(t *testing.T, got, want []string) {
 			t.Fatalf("item %d = %q, want %q; got=%v want=%v", i, got[i], want[i], got, want)
 		}
 	}
+}
+
+func createBucketConfigXML(locationConstraint string) string {
+	return fmt.Sprintf(`<CreateBucketConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><LocationConstraint>%s</LocationConstraint></CreateBucketConfiguration>`, locationConstraint)
 }

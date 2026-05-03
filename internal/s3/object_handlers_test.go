@@ -30,10 +30,13 @@ import (
 
 type objectTestEnv struct {
 	router  http.Handler
+	users   metadata.UserRepository
+	buckets metadata.BucketRepository
 	objects metadata.ObjectRepository
 	storage storage.DiskEngine
 	bucket  string
 	dataDir string
+	userID  string
 }
 
 func newObjectTestEnv(t *testing.T) objectTestEnv {
@@ -69,6 +72,7 @@ func newObjectTestEnv(t *testing.T) objectTestEnv {
 
 	objectRepo := metadata.NewObjectRepository(db)
 	handlers := &ObjectHandlers{
+		Users:   userRepo,
 		Buckets: bucketRepo,
 		Objects: objectRepo,
 		Storage: disk,
@@ -90,10 +94,13 @@ func newObjectTestEnv(t *testing.T) objectTestEnv {
 
 	return objectTestEnv{
 		router:  router,
+		users:   userRepo,
+		buckets: bucketRepo,
 		objects: objectRepo,
 		storage: disk,
 		bucket:  bucketName,
 		dataDir: dataDir,
+		userID:  user.ID,
 	}
 }
 

@@ -15,6 +15,7 @@ import (
 )
 
 type ObjectHandlers struct {
+	Users   metadata.UserRepository
 	Buckets metadata.BucketRepository
 	Objects metadata.ObjectRepository
 	Storage storage.DiskEngine
