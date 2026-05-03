@@ -15,6 +15,7 @@ import (
 	"github.com/i-got-this-faa/fbs/internal/auth"
 	"github.com/i-got-this-faa/fbs/internal/config"
 	httpapi "github.com/i-got-this-faa/fbs/internal/http"
+	"github.com/i-got-this-faa/fbs/internal/management"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
 	"github.com/i-got-this-faa/fbs/internal/s3"
 	"github.com/i-got-this-faa/fbs/internal/server"
@@ -80,6 +81,12 @@ func main() {
 			s3Routes.Use(auth.RequireAuthentication(authChain, writeS3AuthError))
 			s3.RegisterBucketRoutes(s3Routes, objectHandlers)
 			s3.RegisterObjectRoutes(s3Routes, objectHandlers)
+		})
+		management.RegisterRoutes(r, management.Deps{
+			Buckets:       bucketRepo,
+			Objects:       objectRepo,
+			Users:         userRepo,
+			Authenticator: authChain,
 		})
 		// registerExtraRoutes is a no-op unless built with -tags testendpoints,
 		// which compiles in the /_health/auth debug endpoint.
