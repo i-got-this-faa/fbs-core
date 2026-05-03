@@ -49,9 +49,14 @@ This document defines the discrete features required to build the S3-Compatible 
 
 ## F7: S3 API - Bucket Operations (Backend)
 **Owner:** [Unassigned]
+- Implement `CreateBucket` endpoint (`PUT /{bucket}`).
+  - Validate bucket names against S3 naming rules (3-63 chars, lowercase, no adjacent punctuation, etc.).
+  - Accept empty body or `CreateBucketConfiguration` with `us-east-1` location constraint.
+  - Return `BucketAlreadyOwnedByYou` or `BucketAlreadyExists` on conflicts.
+  - Assign the authenticated principal as the bucket owner.
 - Implement `ListObjectsV2` endpoint.
 - Query the SQLite metadata layer to return paginated directory structures.
-- Add black-box compatibility tests for `ListObjectsV2`, including pagination and prefix or delimiter behavior.
+- Add black-box compatibility tests for `CreateBucket` and `ListObjectsV2`, including pagination, prefix, delimiter, and conflict behavior.
 
 ## F8: S3 API - Multipart Uploads (Backend)
 **Owner:** [Unassigned]

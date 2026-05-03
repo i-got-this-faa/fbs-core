@@ -15,7 +15,7 @@ The `fbs-core` backend handles all S3-compatible data operations, disk I/O, and 
 
 ### Core S3 API Capabilities
 - **Object Operations:** `PUT`, `GET`, `DELETE`, `HEAD`
-- **Bucket Operations:** `LIST` (ListObjectsV2)
+- **Bucket Operations:** `CREATE` (CreateBucket), `LIST` (ListObjectsV2)
 - **Multipart Uploads:** `CreateMultipartUpload`, `UploadPart`, `CompleteMultipartUpload`
 
 ### Performance & Caching

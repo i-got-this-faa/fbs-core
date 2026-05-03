@@ -10,7 +10,7 @@ To prevent blocking team members, features must be tackled according to this dep
 | **F4** | Auth Framework | **F1, F2** | Requires router (F1) and user tables (F2). |
 | **F5** | AWS SigV4 Auth | **F4** | Extends the base authentication framework. |
 | **F6** | Basic Object Ops | **F1, F2, F3** | Needs router, disk writer, and DB state. |
-| **F7** | Bucket Operations | **F2, F6** | Needs objects in the DB to list them. |
+| **F7** | Bucket Operations | **F2, F4, F6** | Needs buckets table (F2), authenticated owner (F4), and objects to list (F6). |
 | **F8** | Multipart Uploads | **F3, F6** | Extends basic object operations. |
 | **F9** | Egress Optimizations | **F6** | Optimizes the already working `GET` requests. |
 | **F10** | Management API | **F1, F2** | Needs routing and DB access to manage keys/tokens. |
@@ -33,8 +33,9 @@ graph TD
     F3 --> F6
     
     F4 --> F5[F5: SigV4 Auth]
+    F4 --> F7[F7: Bucket Ops]
     
-    F6 --> F7[F7: Bucket Ops]
+    F6 --> F7
     F6 --> F8[F8: Multipart Uploads]
     F6 --> F9[F9: Egress Optimizations]
 

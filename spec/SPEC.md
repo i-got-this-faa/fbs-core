@@ -24,7 +24,7 @@ This system is a self-hosted, lightweight object storage ecosystem. It provides 
 
 ## 3. Core S3 API Capabilities
 - **Object Operations:** `PUT`, `GET`, `DELETE`, `HEAD`
-- **Bucket Operations:** `LIST` (ListObjectsV2)
+- **Bucket Operations:** `CREATE` (CreateBucket), `LIST` (ListObjectsV2)
 - **Multipart Uploads:** `CreateMultipartUpload`, `UploadPart`, `CompleteMultipartUpload`
 
 ## 3.1 Testing & Compatibility Strategy
