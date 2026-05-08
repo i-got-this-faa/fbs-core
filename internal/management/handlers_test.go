@@ -261,6 +261,12 @@ func TestManagementCreateKeyReturnsGeneratedSecretsOnce(t *testing.T) {
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusCreated)
 	}
+	if got := resp.Header.Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("Cache-Control = %q, want no-store", got)
+	}
+	if got := resp.Header.Get("Pragma"); got != "no-cache" {
+		t.Fatalf("Pragma = %q, want no-cache", got)
+	}
 
 	var body struct {
 		Key struct {
@@ -305,10 +311,11 @@ func TestManagementInvalidCreateKeyPayloadReturnsBadRequest(t *testing.T) {
 	}
 	for _, payload := range cases {
 		resp := env.do(t, http.MethodPost, "/api/management/keys", env.adminToken, strings.NewReader(payload))
-		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusBadRequest {
+			resp.Body.Close()
 			t.Fatalf("payload %s status = %d, want %d", payload, resp.StatusCode, http.StatusBadRequest)
 		}
+		resp.Body.Close()
 	}
 }
 

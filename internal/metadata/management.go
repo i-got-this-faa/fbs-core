@@ -39,11 +39,20 @@ func NewManagementRepository(db *sql.DB) ManagementRepository {
 func (r *sqliteManagementRepository) Metrics(ctx context.Context) (ManagementMetrics, error) {
 	const q = `
 SELECT
-  (SELECT count(*) FROM buckets) AS bucket_count,
-  (SELECT count(*) FROM objects) AS object_count,
-  (SELECT COALESCE(sum(size), 0) FROM objects) AS total_object_bytes,
-  (SELECT count(*) FROM users) AS user_count,
-  (SELECT count(*) FROM users WHERE is_active != 0) AS active_user_count`
+  bucket_stats.bucket_count,
+  object_stats.object_count,
+  object_stats.total_object_bytes,
+  user_stats.user_count,
+  user_stats.active_user_count
+FROM (SELECT count(*) AS bucket_count FROM buckets) bucket_stats
+CROSS JOIN (
+  SELECT count(*) AS object_count, COALESCE(sum(size), 0) AS total_object_bytes
+  FROM objects
+) object_stats
+CROSS JOIN (
+  SELECT count(*) AS user_count, COALESCE(sum(CASE WHEN is_active != 0 THEN 1 ELSE 0 END), 0) AS active_user_count
+  FROM users
+) user_stats`
 
 	var metrics ManagementMetrics
 	if err := r.db.QueryRowContext(ctx, q).Scan(

@@ -1,8 +1,10 @@
 package management
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -27,9 +29,17 @@ type errorBody struct {
 }
 
 func writeJSON(w http.ResponseWriter, statusCode int, payload interface{}) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	var body bytes.Buffer
+	if err := json.NewEncoder(&body).Encode(payload); err != nil {
+		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+		return
+	}
+
+	setJSONHeaders(w)
 	w.WriteHeader(statusCode)
-	_ = json.NewEncoder(w).Encode(payload)
+	if _, err := w.Write(body.Bytes()); err != nil {
+		slog.Warn("write management JSON response", "error", err)
+	}
 }
 
 func writeError(w http.ResponseWriter, statusCode int, code, message string) {
@@ -58,6 +68,16 @@ func WriteAuthError(w http.ResponseWriter, _ *http.Request, err error) {
 	default:
 		writeError(w, http.StatusUnauthorized, errorCodeUnauthorized, "invalid credentials")
 	}
+}
+
+func setJSONHeaders(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	setNoStoreHeaders(w)
+}
+
+func setNoStoreHeaders(w http.ResponseWriter) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Pragma", "no-cache")
 }
 
 func formatTime(t time.Time) string {

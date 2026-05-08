@@ -164,6 +164,7 @@ func (h *Handlers) DeleteKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	setNoStoreHeaders(w)
 	w.WriteHeader(http.StatusNoContent)
 }
 
