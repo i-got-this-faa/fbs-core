@@ -80,6 +80,7 @@ func main() {
 		Buckets:    bucketRepo,
 		Objects:    objectRepo,
 		Users:      userRepo,
+		Storage:    storageEngine,
 	}
 	objectHandlers := &s3.ObjectHandlers{
 		Users:   userRepo,

@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/i-got-this-faa/fbs/internal/auth"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
+	"github.com/i-got-this-faa/fbs/internal/storage"
 )
 
 const (
@@ -22,6 +23,7 @@ type Handlers struct {
 	Buckets    metadata.BucketRepository
 	Objects    metadata.ObjectRepository
 	Users      metadata.UserRepository
+	Storage    storage.DiskEngine
 }
 
 func (h *Handlers) Metrics(w http.ResponseWriter, r *http.Request) {
@@ -53,6 +55,46 @@ func (h *Handlers) ListBuckets(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, bucketsResponse{Buckets: buckets})
+}
+
+func (h *Handlers) DeleteBucket(w http.ResponseWriter, r *http.Request) {
+	bucketName := strings.TrimSpace(chi.URLParam(r, "bucket"))
+	if !h.ensureBucket(w, r, bucketName) {
+		return
+	}
+
+	objects, err := h.listAllObjects(r, bucketName)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to list objects")
+		return
+	}
+
+	if h.Storage != nil {
+		for _, obj := range objects {
+			if err := h.Storage.Delete(r.Context(), obj.StoragePath); err != nil {
+				writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to delete object data")
+				return
+			}
+		}
+	}
+
+	if err := h.Objects.DeleteAllInBucket(r.Context(), bucketName); err != nil {
+		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to delete bucket objects")
+		return
+	}
+
+	err = h.Buckets.Delete(r.Context(), bucketName)
+	if errors.Is(err, metadata.ErrBucketNotFound) {
+		writeError(w, http.StatusNotFound, errorCodeNotFound, "bucket not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to delete bucket")
+		return
+	}
+
+	setNoStoreHeaders(w)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handlers) ListObjects(w http.ResponseWriter, r *http.Request) {
@@ -263,6 +305,22 @@ func (h *Handlers) listObjects(r *http.Request, bucketName string, params object
 	}
 
 	return objects, commonPrefixes, isTruncated, nextCursor, nil
+}
+
+func (h *Handlers) listAllObjects(r *http.Request, bucketName string) ([]metadata.Object, error) {
+	var allObjects []metadata.Object
+	startAfter := ""
+	for {
+		objects, isTruncated, err := h.Objects.List(r.Context(), bucketName, "", startAfter, maxObjectListLimit)
+		if err != nil {
+			return nil, err
+		}
+		allObjects = append(allObjects, objects...)
+		if !isTruncated || len(objects) == 0 {
+			return allObjects, nil
+		}
+		startAfter = objects[len(objects)-1].Key
+	}
 }
 
 type createKeyInput struct {

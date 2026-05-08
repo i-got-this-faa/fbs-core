@@ -92,6 +92,33 @@ func TestManagementListBuckets(t *testing.T) {
 	}
 }
 
+func TestManagementDeleteBucketRemovesObjects(t *testing.T) {
+	t.Parallel()
+
+	env := newManagementTestEnv(t)
+
+	resp := env.do(t, http.MethodDelete, "/api/management/buckets/photos", env.adminToken, nil)
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusNoContent)
+	}
+
+	if _, err := metadata.NewBucketRepository(env.db).GetByName(context.Background(), "photos"); !errorsIsBucketNotFound(err) {
+		t.Fatalf("deleted bucket lookup error = %v, want ErrBucketNotFound", err)
+	}
+
+	if _, err := metadata.NewObjectRepository(env.db).GetByKey(context.Background(), "photos", "2026/image.jpg"); !errorsIsObjectNotFound(err) {
+		t.Fatalf("deleted object lookup error = %v, want ErrObjectNotFound", err)
+	}
+
+	missing := env.do(t, http.MethodDelete, "/api/management/buckets/photos", env.adminToken, nil)
+	defer missing.Body.Close()
+	if missing.StatusCode != http.StatusNotFound {
+		t.Fatalf("delete missing status = %d, want %d", missing.StatusCode, http.StatusNotFound)
+	}
+}
+
 func TestManagementListObjectsSupportsPrefixDelimiterCursorAndLimit(t *testing.T) {
 	t.Parallel()
 
@@ -520,4 +547,12 @@ func readBody(t *testing.T, resp *http.Response) []byte {
 
 func errorsIsUserNotFound(err error) bool {
 	return err == metadata.ErrUserNotFound
+}
+
+func errorsIsBucketNotFound(err error) bool {
+	return err == metadata.ErrBucketNotFound
+}
+
+func errorsIsObjectNotFound(err error) bool {
+	return err == metadata.ErrObjectNotFound
 }
