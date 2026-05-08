@@ -15,6 +15,7 @@ import (
 	"github.com/i-got-this-faa/fbs/internal/auth"
 	"github.com/i-got-this-faa/fbs/internal/config"
 	httpapi "github.com/i-got-this-faa/fbs/internal/http"
+	"github.com/i-got-this-faa/fbs/internal/management"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
 	"github.com/i-got-this-faa/fbs/internal/s3"
 	"github.com/i-got-this-faa/fbs/internal/server"
@@ -66,7 +67,20 @@ func main() {
 	authenticators = append(authenticators, &auth.SigV4Authenticator{Repo: sigv4Repo})
 	authChain := &auth.ChainAuthenticator{Authenticators: authenticators}
 
+	var managementAuthenticators []auth.Authenticator
+	if cfg.DevMode {
+		managementAuthenticators = append(managementAuthenticators, &auth.DevAuthenticator{})
+	}
+	managementAuthenticators = append(managementAuthenticators, &auth.BearerAuthenticator{Repo: userRepo})
+	managementAuthChain := &auth.ChainAuthenticator{Authenticators: managementAuthenticators}
+
 	bucketRepo := metadata.NewBucketRepository(db)
+	managementHandlers := &management.Handlers{
+		Management: metadata.NewManagementRepository(db),
+		Buckets:    bucketRepo,
+		Objects:    objectRepo,
+		Users:      userRepo,
+	}
 	objectHandlers := &s3.ObjectHandlers{
 		Users:   userRepo,
 		Buckets: bucketRepo,
@@ -76,6 +90,11 @@ func main() {
 	}
 
 	router := httpapi.NewRouter(cfg, logger, func(r chi.Router) {
+		r.Route("/api/management", func(managementRoutes chi.Router) {
+			managementRoutes.Use(auth.RequireAuthentication(managementAuthChain, management.WriteAuthError))
+			managementRoutes.Use(auth.RequireRole("admin", management.WriteAuthError))
+			management.RegisterRoutes(managementRoutes, managementHandlers)
+		})
 		r.Group(func(s3Routes chi.Router) {
 			s3Routes.Use(auth.RequireAuthentication(authChain, writeS3AuthError))
 			s3.RegisterBucketRoutes(s3Routes, objectHandlers)
