@@ -75,6 +75,25 @@ ALTER TABLE users ADD COLUMN sigv4_secret_key    TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_sigv4_access_key_id ON users(sigv4_access_key_id);
 `,
 	},
+	{
+		version: 3,
+		name:    "add object activity",
+		sql: `
+CREATE TABLE object_activity (
+    id            TEXT PRIMARY KEY,
+    action        TEXT NOT NULL,
+    bucket_name   TEXT NOT NULL,
+    object_key    TEXT,
+    size          INTEGER,
+    etag          TEXT,
+    actor_user_id TEXT,
+    created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_object_activity_created_at ON object_activity(created_at DESC, id DESC);
+CREATE INDEX idx_object_activity_bucket ON object_activity(bucket_name, created_at DESC);
+`,
+	},
 }
 
 func ensureMigrationsTable(db *sql.DB) error {

@@ -78,6 +78,79 @@ func TestManagementRepositoryListBucketSummaries(t *testing.T) {
 	}
 }
 
+func TestManagementRepositoryGetBucketSummary(t *testing.T) {
+	t.Parallel()
+
+	db, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	ctx := context.Background()
+	seedManagementRepositoryData(t, ctx, db)
+
+	summary, err := NewManagementRepository(db).GetBucketSummary(ctx, "photos")
+	if err != nil {
+		t.Fatalf("get summary: %v", err)
+	}
+	if summary.Name != "photos" || summary.ObjectCount != 2 || summary.TotalObjectBytes != 30 {
+		t.Fatalf("summary = %+v, want photos count=2 bytes=30", summary)
+	}
+
+	if _, err := NewManagementRepository(db).GetBucketSummary(ctx, "missing"); err != ErrBucketNotFound {
+		t.Fatalf("missing err = %v, want ErrBucketNotFound", err)
+	}
+}
+
+func TestActivityRepositoryCreateAndList(t *testing.T) {
+	t.Parallel()
+
+	db, err := Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	ctx := context.Background()
+	repo := NewActivityRepository(db)
+	now := time.Date(2026, 5, 8, 12, 0, 0, 0, time.UTC)
+	activities := []*ObjectActivity{
+		{ID: "activity-1", Action: "put_object", BucketName: "photos", ObjectKey: "a.jpg", Size: 10, ETag: "etag-a", ActorUserID: "user-1", CreatedAt: now},
+		{ID: "activity-2", Action: "delete_object", BucketName: "photos", ObjectKey: "b.jpg", Size: 20, ETag: "etag-b", ActorUserID: "user-1", CreatedAt: now.Add(time.Second)},
+		{ID: "activity-3", Action: "put_object", BucketName: "docs", ObjectKey: "c.txt", Size: 30, ETag: "etag-c", ActorUserID: "user-2", CreatedAt: now.Add(2 * time.Second)},
+	}
+	for _, activity := range activities {
+		if err := repo.Create(ctx, activity); err != nil {
+			t.Fatalf("create activity: %v", err)
+		}
+	}
+
+	limited, err := repo.List(ctx, ActivityListFilter{Limit: 2})
+	if err != nil {
+		t.Fatalf("list limited: %v", err)
+	}
+	if len(limited) != 2 || limited[0].ID != "activity-3" || limited[1].ID != "activity-2" {
+		t.Fatalf("limited = %+v, want activity-3/activity-2", limited)
+	}
+
+	photos, err := repo.List(ctx, ActivityListFilter{BucketName: "photos", Limit: 10})
+	if err != nil {
+		t.Fatalf("list photos: %v", err)
+	}
+	if len(photos) != 2 {
+		t.Fatalf("len(photos) = %d, want 2", len(photos))
+	}
+
+	puts, err := repo.List(ctx, ActivityListFilter{Action: "put_object", Limit: 10})
+	if err != nil {
+		t.Fatalf("list puts: %v", err)
+	}
+	if len(puts) != 2 {
+		t.Fatalf("len(puts) = %d, want 2", len(puts))
+	}
+}
+
 func seedManagementRepositoryData(t *testing.T, ctx context.Context, db *sql.DB) {
 	t.Helper()
 

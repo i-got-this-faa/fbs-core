@@ -578,3 +578,41 @@ func SignRequestWithContext(ctx context.Context, r *http.Request, accessKeyID, s
 
 	r.Header.Set("Authorization", authHeader)
 }
+
+// PresignRequest is a test helper that signs an HTTP request using SigV4 query parameters.
+// It is exported so integration tests can exercise presigned S3 requests.
+func PresignRequest(r *http.Request, accessKeyID, secretKey, region, service string, expires time.Duration, now time.Time) {
+	if r.Header.Get("Host") == "" && r.Host != "" {
+		r.Header.Set("Host", r.Host)
+	}
+
+	timestamp := now.UTC().Format("20060102T150405Z")
+	date := now.UTC().Format("20060102")
+	credential := accessKeyID + "/" + date + "/" + region + "/" + service + "/" + sigV4Terminator
+	expiresSeconds := int(expires.Seconds())
+	if expiresSeconds <= 0 {
+		expiresSeconds = 900
+	}
+
+	q := r.URL.Query()
+	q.Set("X-Amz-Algorithm", sigV4Algorithm)
+	q.Set("X-Amz-Credential", credential)
+	q.Set("X-Amz-Date", timestamp)
+	q.Set("X-Amz-Expires", strconv.Itoa(expiresSeconds))
+	q.Set("X-Amz-SignedHeaders", "host")
+	if r.Method == http.MethodPut {
+		q.Set("X-Amz-Content-SHA256", unsignedPayload)
+	}
+	r.URL.RawQuery = q.Encode()
+
+	payloadHash := q.Get("X-Amz-Content-SHA256")
+	if payloadHash == "" {
+		payloadHash = unsignedPayload
+	}
+	canonicalRequest := buildCanonicalRequestForQuery(r, "host", payloadHash)
+	stringToSign := buildStringToSign(timestamp, credential, canonicalRequest)
+	signature := computeSignature(secretKey, date, region, service, stringToSign)
+
+	q.Set("X-Amz-Signature", signature)
+	r.URL.RawQuery = q.Encode()
+}
