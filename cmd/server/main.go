@@ -79,15 +79,18 @@ func main() {
 		Management: metadata.NewManagementRepository(db),
 		Buckets:    bucketRepo,
 		Objects:    objectRepo,
+		Activity:   metadata.NewActivityRepository(db),
 		Users:      userRepo,
 		Storage:    storageEngine,
+		Config:     cfg,
 	}
 	objectHandlers := &s3.ObjectHandlers{
-		Users:   userRepo,
-		Buckets: bucketRepo,
-		Objects: objectRepo,
-		Storage: storageEngine,
-		Logger:  logger,
+		Users:    userRepo,
+		Buckets:  bucketRepo,
+		Objects:  objectRepo,
+		Activity: metadata.NewActivityRepository(db),
+		Storage:  storageEngine,
+		Logger:   logger,
 	}
 
 	router := httpapi.NewRouter(cfg, logger, func(r chi.Router) {

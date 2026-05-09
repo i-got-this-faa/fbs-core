@@ -3,6 +3,7 @@ package metadata
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -26,6 +27,7 @@ type BucketSummary struct {
 type ManagementRepository interface {
 	Metrics(ctx context.Context) (ManagementMetrics, error)
 	ListBucketSummaries(ctx context.Context) ([]BucketSummary, error)
+	GetBucketSummary(ctx context.Context, bucketName string) (BucketSummary, error)
 }
 
 type sqliteManagementRepository struct {
@@ -107,4 +109,36 @@ ORDER BY b.created_at ASC`
 	}
 
 	return summaries, nil
+}
+
+func (r *sqliteManagementRepository) GetBucketSummary(ctx context.Context, bucketName string) (BucketSummary, error) {
+	const q = `
+SELECT b.name, b.owner_id, b.created_at, count(o.id), COALESCE(sum(o.size), 0)
+FROM buckets b
+LEFT JOIN objects o ON o.bucket_name = b.name
+WHERE b.name = ?
+GROUP BY b.name, b.owner_id, b.created_at`
+
+	var summary BucketSummary
+	var createdAt string
+	err := r.db.QueryRowContext(ctx, q, bucketName).Scan(
+		&summary.Name,
+		&summary.OwnerID,
+		&createdAt,
+		&summary.ObjectCount,
+		&summary.TotalObjectBytes,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return BucketSummary{}, ErrBucketNotFound
+	}
+	if err != nil {
+		return BucketSummary{}, fmt.Errorf("get bucket summary: %w", err)
+	}
+
+	summary.CreatedAt, err = parseTimestamp(createdAt)
+	if err != nil {
+		return BucketSummary{}, err
+	}
+
+	return summary, nil
 }

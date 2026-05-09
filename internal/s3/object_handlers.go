@@ -15,13 +15,14 @@ import (
 )
 
 type ObjectHandlers struct {
-	Users   metadata.UserRepository
-	Buckets metadata.BucketRepository
-	Objects metadata.ObjectRepository
-	Storage storage.DiskEngine
-	Now     func() time.Time
-	NewID   func() string
-	Logger  *slog.Logger
+	Users    metadata.UserRepository
+	Buckets  metadata.BucketRepository
+	Objects  metadata.ObjectRepository
+	Activity metadata.ActivityRepository
+	Storage  storage.DiskEngine
+	Now      func() time.Time
+	NewID    func() string
+	Logger   *slog.Logger
 }
 
 func (h *ObjectHandlers) PutObject(w http.ResponseWriter, r *http.Request) {
@@ -78,6 +79,7 @@ func (h *ObjectHandlers) PutObject(w http.ResponseWriter, r *http.Request) {
 		WriteS3Error(w, r, http.StatusInternalServerError, codeInternalError, messageInternalError)
 		return
 	}
+	h.recordActivity(r, "put_object", bucketName, key, size, obj.ETag)
 
 	w.Header().Set("ETag", quoteETag(obj.ETag))
 	w.WriteHeader(http.StatusOK)
@@ -132,48 +134,19 @@ func (h *ObjectHandlers) DeleteObject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	obj, err := h.Objects.GetByKey(r.Context(), bucketName, key)
-	if errors.Is(err, metadata.ErrObjectNotFound) {
+	obj, existed, err := h.deleteObject(r, bucketName, key)
+	if err != nil {
+		h.logError("delete object", err, bucketName, key, "")
+		WriteS3Error(w, r, http.StatusInternalServerError, codeInternalError, messageInternalError)
+		return
+	}
+	if !existed {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	if err != nil {
-		h.logError("load object before delete", err, bucketName, key, "")
-		WriteS3Error(w, r, http.StatusInternalServerError, codeInternalError, messageInternalError)
-		return
-	}
-
-	if err := h.Objects.Delete(r.Context(), bucketName, key); err != nil {
-		h.logError("delete object metadata", err, bucketName, key, obj.StoragePath)
-		WriteS3Error(w, r, http.StatusInternalServerError, codeInternalError, messageInternalError)
-		return
-	}
-
-	if err := h.Storage.Delete(r.Context(), obj.StoragePath); err != nil {
-		h.logError("delete object backing file", err, bucketName, key, obj.StoragePath)
-	}
+	h.recordActivity(r, "delete_object", bucketName, key, obj.Size, obj.ETag)
 
 	w.WriteHeader(http.StatusNoContent)
-}
-
-func (h *ObjectHandlers) ensureBucket(w http.ResponseWriter, r *http.Request, bucketName string) bool {
-	if strings.TrimSpace(bucketName) == "" {
-		WriteS3Error(w, r, http.StatusBadRequest, codeInvalidRequest, messageInvalidRequest)
-		return false
-	}
-
-	_, err := h.Buckets.GetByName(r.Context(), bucketName)
-	if errors.Is(err, metadata.ErrBucketNotFound) {
-		WriteS3Error(w, r, http.StatusNotFound, codeNoSuchBucket, messageNoSuchBucket)
-		return false
-	}
-	if err != nil {
-		h.logError("load bucket", err, bucketName, "", "")
-		WriteS3Error(w, r, http.StatusInternalServerError, codeInternalError, messageInternalError)
-		return false
-	}
-
-	return true
 }
 
 func (h *ObjectHandlers) writeStorageMutationError(w http.ResponseWriter, r *http.Request, err error, bucketName, key, storagePath string) {

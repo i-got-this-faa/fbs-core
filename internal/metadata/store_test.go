@@ -86,12 +86,12 @@ func TestMigrations(t *testing.T) {
 
 	// Check tables exist
 	var count int
-	err = db2.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('users', 'buckets', 'objects', 'multipart_uploads', 'multipart_parts')").Scan(&count)
+	err = db2.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('users', 'buckets', 'objects', 'multipart_uploads', 'multipart_parts', 'object_activity')").Scan(&count)
 	if err != nil {
 		t.Fatalf("query sqlite_master: %v", err)
 	}
-	if count != 5 {
-		t.Errorf("expected 5 metadata tables to be created, got %d", count)
+	if count != 6 {
+		t.Errorf("expected 6 metadata tables to be created, got %d", count)
 	}
 }
 

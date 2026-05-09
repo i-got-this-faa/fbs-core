@@ -11,6 +11,7 @@ import (
 
 	"github.com/i-got-this-faa/fbs/internal/auth"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
+	"github.com/i-got-this-faa/fbs/internal/s3compat"
 )
 
 type createBucketConfiguration struct {
@@ -71,6 +72,7 @@ func (h *ObjectHandlers) CreateBucket(w http.ResponseWriter, r *http.Request) {
 		WriteS3Error(w, r, http.StatusInternalServerError, codeInternalError, messageInternalError)
 		return
 	}
+	h.recordActivity(r, "create_bucket", bucketName, "", 0, "")
 
 	w.Header().Set("Location", "/"+bucketName)
 	w.WriteHeader(http.StatusOK)
@@ -145,7 +147,7 @@ func validateCreateBucketConfiguration(body io.ReadCloser) error {
 	}
 
 	locationConstraint := strings.TrimSpace(config.LocationConstraint)
-	if locationConstraint == "" || locationConstraint == "us-east-1" {
+	if locationConstraint == "" || locationConstraint == s3compat.Region {
 		return nil
 	}
 

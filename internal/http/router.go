@@ -26,9 +26,9 @@ func NewRouter(cfg config.Config, logger *slog.Logger, registerExtras func(chi.R
 	router.Use(appmiddleware.Recovery(logger))
 	router.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   cfg.CORSAllowedOrigins,
-		AllowedMethods:   []string{stdhttp.MethodGet, stdhttp.MethodHead, stdhttp.MethodPost, stdhttp.MethodPut, stdhttp.MethodDelete, stdhttp.MethodOptions},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "Content-Length", "Origin", "X-Amz-Content-Sha256", "X-Amz-Date", "X-Amz-Security-Token", "X-Requested-With"},
-		ExposedHeaders:   []string{"ETag"},
+		AllowedMethods:   []string{stdhttp.MethodGet, stdhttp.MethodHead, stdhttp.MethodPost, stdhttp.MethodPatch, stdhttp.MethodPut, stdhttp.MethodDelete, stdhttp.MethodOptions},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "Content-Length", "Origin", "X-Amz-Content-Sha256", "X-Amz-Copy-Source", "X-Amz-Date", "X-Amz-Metadata-Directive", "X-Amz-Security-Token", "X-Requested-With"},
+		ExposedHeaders:   []string{"ETag", "x-amz-bucket-region"},
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))

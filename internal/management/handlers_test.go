@@ -119,6 +119,55 @@ func TestManagementDeleteBucketRemovesObjects(t *testing.T) {
 	}
 }
 
+func TestManagementGetBucket(t *testing.T) {
+	t.Parallel()
+
+	env := newManagementTestEnv(t)
+	resp := env.do(t, http.MethodGet, "/api/management/buckets/photos", env.adminToken, nil)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	var body struct {
+		Bucket struct {
+			Name             string `json:"name"`
+			OwnerID          string `json:"owner_id"`
+			CreatedAt        string `json:"created_at"`
+			ObjectCount      int64  `json:"object_count"`
+			TotalObjectBytes int64  `json:"total_object_bytes"`
+		} `json:"bucket"`
+	}
+	decodeResponse(t, resp, &body)
+	if body.Bucket.Name != "photos" || body.Bucket.ObjectCount != 3 || body.Bucket.TotalObjectBytes != 60 {
+		t.Fatalf("bucket = %+v, want photos count=3 bytes=60", body.Bucket)
+	}
+	if body.Bucket.OwnerID == "" || body.Bucket.CreatedAt == "" {
+		t.Fatalf("bucket missing owner/created_at: %+v", body.Bucket)
+	}
+}
+
+func TestManagementEmptyBucketRemovesObjectsButKeepsBucket(t *testing.T) {
+	t.Parallel()
+
+	env := newManagementTestEnv(t)
+	resp := env.do(t, http.MethodPost, "/api/management/buckets/photos/empty", env.adminToken, nil)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204", resp.StatusCode)
+	}
+	if _, err := metadata.NewBucketRepository(env.db).GetByName(context.Background(), "photos"); err != nil {
+		t.Fatalf("bucket should remain: %v", err)
+	}
+	objects, truncated, err := metadata.NewObjectRepository(env.db).List(context.Background(), "photos", "", "", 10)
+	if err != nil {
+		t.Fatalf("list objects: %v", err)
+	}
+	if truncated || len(objects) != 0 {
+		t.Fatalf("objects = %v truncated=%v, want empty", objects, truncated)
+	}
+}
+
 func TestManagementListObjectsSupportsPrefixDelimiterCursorAndLimit(t *testing.T) {
 	t.Parallel()
 
@@ -368,6 +417,118 @@ func TestManagementDeleteKey(t *testing.T) {
 	}
 }
 
+func TestManagementPatchKey(t *testing.T) {
+	t.Parallel()
+
+	env := newManagementTestEnv(t)
+	resp := env.do(t, http.MethodPatch, "/api/management/keys/"+env.memberUserID, env.adminToken, strings.NewReader(`{"display_name":"Renamed Member"}`))
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		Key struct {
+			ID          string `json:"id"`
+			DisplayName string `json:"display_name"`
+			IsActive    bool   `json:"is_active"`
+		} `json:"key"`
+	}
+	decodeResponse(t, resp, &body)
+	if body.Key.ID != env.memberUserID || body.Key.DisplayName != "Renamed Member" || !body.Key.IsActive {
+		t.Fatalf("patched key = %+v", body.Key)
+	}
+}
+
+func TestManagementPatchKeyDeactivatePreventsBearerAuthentication(t *testing.T) {
+	t.Parallel()
+
+	env := newManagementTestEnv(t)
+	resp := env.do(t, http.MethodPatch, "/api/management/keys/"+env.memberUserID, env.adminToken, strings.NewReader(`{"is_active":false}`))
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("patch status = %d, want 200", resp.StatusCode)
+	}
+
+	member := env.do(t, http.MethodGet, "/api/management/metrics", env.memberToken, nil)
+	defer member.Body.Close()
+	if member.StatusCode != http.StatusForbidden {
+		t.Fatalf("inactive member status = %d, want 403", member.StatusCode)
+	}
+}
+
+func TestManagementPatchKeyInvalidPayloads(t *testing.T) {
+	t.Parallel()
+
+	env := newManagementTestEnv(t)
+	cases := []string{
+		`{}`,
+		`{"display_name":"   "}`,
+		`{"is_active":"no"}`,
+		`{"unknown":true}`,
+	}
+	for _, payload := range cases {
+		resp := env.do(t, http.MethodPatch, "/api/management/keys/"+env.memberUserID, env.adminToken, strings.NewReader(payload))
+		if resp.StatusCode != http.StatusBadRequest {
+			resp.Body.Close()
+			t.Fatalf("payload %s status = %d, want 400", payload, resp.StatusCode)
+		}
+		resp.Body.Close()
+	}
+}
+
+func TestManagementActivityAndConfig(t *testing.T) {
+	t.Parallel()
+
+	env := newManagementTestEnv(t)
+	activityRepo := metadata.NewActivityRepository(env.db)
+	if err := activityRepo.Create(context.Background(), &metadata.ObjectActivity{
+		ID:          "activity-1",
+		Action:      "put_object",
+		BucketName:  "photos",
+		ObjectKey:   "a.jpg",
+		Size:        10,
+		ETag:        "etag-a",
+		ActorUserID: env.adminUserID,
+		CreatedAt:   time.Date(2026, 5, 8, 12, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("create activity: %v", err)
+	}
+
+	activityResp := env.do(t, http.MethodGet, "/api/management/activity?bucket=photos&action=put_object&limit=10", env.adminToken, nil)
+	defer activityResp.Body.Close()
+	if activityResp.StatusCode != http.StatusOK {
+		t.Fatalf("activity status = %d, want 200", activityResp.StatusCode)
+	}
+	var activityBody struct {
+		Activity []struct {
+			ID          string `json:"id"`
+			Action      string `json:"action"`
+			Bucket      string `json:"bucket"`
+			Key         string `json:"key"`
+			ActorUserID string `json:"actor_user_id"`
+		} `json:"activity"`
+	}
+	decodeResponse(t, activityResp, &activityBody)
+	if len(activityBody.Activity) != 1 || activityBody.Activity[0].ID != "activity-1" {
+		t.Fatalf("activity = %+v, want activity-1", activityBody.Activity)
+	}
+
+	configResp := env.do(t, http.MethodGet, "/api/management/config", env.adminToken, nil)
+	defer configResp.Body.Close()
+	if configResp.StatusCode != http.StatusOK {
+		t.Fatalf("config status = %d, want 200", configResp.StatusCode)
+	}
+	configText := string(readBody(t, configResp))
+	for _, forbidden := range []string{"db_path", "data_dir", "http_addr", "secret", "bind"} {
+		if strings.Contains(configText, forbidden) {
+			t.Fatalf("config response exposed %q: %s", forbidden, configText)
+		}
+	}
+	if !strings.Contains(configText, `"region":"us-east-1"`) || !strings.Contains(configText, `"management_activity_limit":500`) {
+		t.Fatalf("config response missing expected fields: %s", configText)
+	}
+}
+
 func TestManagementAuthRequiresAdmin(t *testing.T) {
 	t.Parallel()
 
@@ -446,7 +607,9 @@ func newManagementTestEnv(t *testing.T) managementTestEnv {
 		Management: metadata.NewManagementRepository(db),
 		Buckets:    bucketRepo,
 		Objects:    objectRepo,
+		Activity:   metadata.NewActivityRepository(db),
 		Users:      userRepo,
+		Config:     config.Default(),
 	}
 	authChain := &auth.ChainAuthenticator{
 		Authenticators: []auth.Authenticator{

@@ -34,6 +34,7 @@ type objectTestEnv struct {
 	buckets metadata.BucketRepository
 	objects metadata.ObjectRepository
 	storage storage.DiskEngine
+	sigv4   auth.SigV4Credentials
 	bucket  string
 	dataDir string
 	userID  string
@@ -49,7 +50,7 @@ func newObjectTestEnv(t *testing.T) objectTestEnv {
 	t.Cleanup(func() { _ = db.Close() })
 
 	userRepo := metadata.NewUserRepository(db)
-	_, _, user, err := auth.CreateBearerToken(context.Background(), userRepo, "Test User", "admin")
+	_, sigv4, user, err := auth.CreateBearerToken(context.Background(), userRepo, "Test User", "admin")
 	if err != nil {
 		t.Fatalf("create bearer token: %v", err)
 	}
@@ -98,6 +99,7 @@ func newObjectTestEnv(t *testing.T) objectTestEnv {
 		buckets: bucketRepo,
 		objects: objectRepo,
 		storage: disk,
+		sigv4:   sigv4,
 		bucket:  bucketName,
 		dataDir: dataDir,
 		userID:  user.ID,

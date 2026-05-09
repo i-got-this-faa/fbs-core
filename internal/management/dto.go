@@ -14,6 +14,10 @@ type bucketsResponse struct {
 	Buckets []bucketSummaryResponse `json:"buckets"`
 }
 
+type bucketResponse struct {
+	Bucket bucketSummaryResponse `json:"bucket"`
+}
+
 type bucketSummaryResponse struct {
 	Name             string `json:"name"`
 	OwnerID          string `json:"owner_id"`
@@ -77,9 +81,42 @@ type createKeyResponse struct {
 	SigV4       sigv4Response `json:"sigv4"`
 }
 
+type keyEnvelopeResponse struct {
+	Key keyResponse `json:"key"`
+}
+
 type sigv4Response struct {
 	AccessKeyID string `json:"access_key_id"`
 	SecretKey   string `json:"secret_key"`
+}
+
+type activityResponse struct {
+	Activity []activityItemResponse `json:"activity"`
+}
+
+type activityItemResponse struct {
+	ID          string `json:"id"`
+	Action      string `json:"action"`
+	Bucket      string `json:"bucket"`
+	Key         string `json:"key,omitempty"`
+	Size        int64  `json:"size,omitempty"`
+	ETag        string `json:"etag,omitempty"`
+	ActorUserID string `json:"actor_user_id,omitempty"`
+	CreatedAt   string `json:"created_at"`
+}
+
+type configResponse struct {
+	Region        string               `json:"region"`
+	DevMode       bool                 `json:"dev_mode"`
+	PublicBaseURL string               `json:"public_base_url"`
+	Limits        configLimitsResponse `json:"limits"`
+}
+
+type configLimitsResponse struct {
+	S3MaxKeys                 int `json:"s3_max_keys"`
+	S3DeleteObjects           int `json:"s3_delete_objects"`
+	ManagementObjectListLimit int `json:"management_object_list_limit"`
+	ManagementActivityLimit   int `json:"management_activity_limit"`
 }
 
 func bucketSummaryDTO(summary metadata.BucketSummary) bucketSummaryResponse {
@@ -125,5 +162,18 @@ func keyDTO(user metadata.User) keyResponse {
 		IsActive:         user.IsActive,
 		CreatedAt:        formatTime(user.CreatedAt),
 		UpdatedAt:        formatTime(user.UpdatedAt),
+	}
+}
+
+func activityDTO(activity metadata.ObjectActivity) activityItemResponse {
+	return activityItemResponse{
+		ID:          activity.ID,
+		Action:      activity.Action,
+		Bucket:      activity.BucketName,
+		Key:         activity.ObjectKey,
+		Size:        activity.Size,
+		ETag:        activity.ETag,
+		ActorUserID: activity.ActorUserID,
+		CreatedAt:   formatTime(activity.CreatedAt),
 	}
 }

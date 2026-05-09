@@ -8,6 +8,8 @@ type Principal struct {
 	AccessKeyID string
 	Role        string
 	DevMode     bool
+	// SignedHeaders is populated for SigV4-authenticated requests.
+	SignedHeaders string
 }
 
 type principalKey struct{}
