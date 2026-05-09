@@ -149,26 +149,6 @@ func (h *ObjectHandlers) DeleteObject(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *ObjectHandlers) ensureBucket(w http.ResponseWriter, r *http.Request, bucketName string) bool {
-	if strings.TrimSpace(bucketName) == "" {
-		WriteS3Error(w, r, http.StatusBadRequest, codeInvalidRequest, messageInvalidRequest)
-		return false
-	}
-
-	_, err := h.Buckets.GetByName(r.Context(), bucketName)
-	if errors.Is(err, metadata.ErrBucketNotFound) {
-		WriteS3Error(w, r, http.StatusNotFound, codeNoSuchBucket, messageNoSuchBucket)
-		return false
-	}
-	if err != nil {
-		h.logError("load bucket", err, bucketName, "", "")
-		WriteS3Error(w, r, http.StatusInternalServerError, codeInternalError, messageInternalError)
-		return false
-	}
-
-	return true
-}
-
 func (h *ObjectHandlers) writeStorageMutationError(w http.ResponseWriter, r *http.Request, err error, bucketName, key, storagePath string) {
 	if errors.Is(err, storage.ErrInvalidKey) || errors.Is(err, storage.ErrPathTraversal) {
 		WriteS3Error(w, r, http.StatusBadRequest, codeInvalidRequest, messageInvalidRequest)

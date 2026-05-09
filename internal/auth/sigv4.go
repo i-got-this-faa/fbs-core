@@ -107,11 +107,12 @@ func (s *SigV4Authenticator) authenticateHeader(r *http.Request) (Principal, err
 	}
 
 	return Principal{
-		UserID:      user.ID,
-		DisplayName: user.DisplayName,
-		AccessKeyID: user.SigV4AccessKeyID,
-		Role:        user.Role,
-		DevMode:     false,
+		UserID:        user.ID,
+		DisplayName:   user.DisplayName,
+		AccessKeyID:   user.SigV4AccessKeyID,
+		Role:          user.Role,
+		DevMode:       false,
+		SignedHeaders: signedHeaders,
 	}, nil
 }
 
@@ -195,11 +196,12 @@ func (s *SigV4Authenticator) authenticateQuery(r *http.Request) (Principal, erro
 	}
 
 	return Principal{
-		UserID:      user.ID,
-		DisplayName: user.DisplayName,
-		AccessKeyID: user.SigV4AccessKeyID,
-		Role:        user.Role,
-		DevMode:     false,
+		UserID:        user.ID,
+		DisplayName:   user.DisplayName,
+		AccessKeyID:   user.SigV4AccessKeyID,
+		Role:          user.Role,
+		DevMode:       false,
+		SignedHeaders: signedHeaders,
 	}, nil
 }
 

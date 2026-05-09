@@ -167,6 +167,38 @@ func TestBucketList(t *testing.T) {
 	}
 }
 
+func TestBucketListByOwner(t *testing.T) {
+	db := openTestDBWithBuckets(t)
+	repo := NewBucketRepository(db)
+	ctx := context.Background()
+
+	ownerID := insertTestUser(t, db)
+	otherUser := newTestUser()
+	otherUser.AccessKeyID = "other-access-key"
+	otherUser.SigV4AccessKeyID = "other-sigv4-key"
+	if err := NewUserRepository(db).Create(ctx, otherUser); err != nil {
+		t.Fatalf("Create other user: %v", err)
+	}
+	otherOwnerID := otherUser.ID
+	owned := newTestBucket(ownerID)
+	other := newTestBucket(otherOwnerID)
+
+	for _, b := range []*Bucket{owned, other} {
+		if err := repo.Create(ctx, b); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+	}
+
+	buckets, err := repo.ListByOwner(ctx, ownerID)
+	if err != nil {
+		t.Fatalf("ListByOwner: %v", err)
+	}
+	if len(buckets) != 1 {
+		t.Fatalf("expected 1 bucket, got %d", len(buckets))
+	}
+	assertBucketsEqual(t, owned, &buckets[0])
+}
+
 func TestBucketDelete(t *testing.T) {
 	db := openTestDBWithBuckets(t)
 	repo := NewBucketRepository(db)

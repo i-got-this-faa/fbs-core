@@ -5,8 +5,11 @@ import (
 	"encoding/base64"
 	"encoding/xml"
 	"fmt"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -187,6 +190,44 @@ func TestHeadBucket(t *testing.T) {
 	}
 	if missing.Body.Len() != 0 {
 		t.Fatalf("missing body length = %d, want 0", missing.Body.Len())
+	}
+}
+
+func TestMemberBucketAccessIsScopedToOwner(t *testing.T) {
+	t.Parallel()
+
+	env := newScopedS3TestEnv(t, auth.Principal{
+		UserID:      "member-user",
+		DisplayName: "Member User",
+		AccessKeyID: "member",
+		Role:        "member",
+	})
+
+	list := env.do(t, http.MethodGet, "/", "", nil)
+	if list.Code != http.StatusOK {
+		t.Fatalf("list status = %d, want 200; body=%s", list.Code, list.Body.String())
+	}
+	var result listAllMyBucketsResult
+	if err := xml.Unmarshal(list.Body.Bytes(), &result); err != nil {
+		t.Fatalf("unmarshal list buckets: %v", err)
+	}
+	if len(result.Buckets.Buckets) != 1 || result.Buckets.Buckets[0].Name != "member-bucket" {
+		t.Fatalf("buckets = %+v, want only member-bucket", result.Buckets.Buckets)
+	}
+
+	owned := env.do(t, http.MethodHead, "/member-bucket", "", nil)
+	if owned.Code != http.StatusOK {
+		t.Fatalf("owned status = %d, want 200", owned.Code)
+	}
+
+	other := env.do(t, http.MethodHead, "/other-bucket", "", nil)
+	if other.Code != http.StatusForbidden {
+		t.Fatalf("other status = %d, want 403; body=%s", other.Code, other.Body.String())
+	}
+
+	putOther := env.do(t, http.MethodPut, "/other-bucket/object.txt", "body", nil)
+	if putOther.Code != http.StatusForbidden {
+		t.Fatalf("put other status = %d, want 403; body=%s", putOther.Code, putOther.Body.String())
 	}
 }
 
@@ -536,7 +577,7 @@ func TestDeleteObjects(t *testing.T) {
 	env.mustPut(t, "b.txt", "b")
 
 	body := `<Delete><Object><Key>a.txt</Key></Object><Object><Key>missing.txt</Key></Object></Delete>`
-	resp := env.do(t, http.MethodDelete, "/"+env.bucket+"?delete", body, map[string]string{"Content-Type": "application/xml"})
+	resp := env.do(t, http.MethodDelete, "/"+env.bucket+"?delete", body, deleteObjectsHeaders(body))
 	if resp.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body=%s", resp.Code, resp.Body.String())
 	}
@@ -551,7 +592,8 @@ func TestDeleteObjects(t *testing.T) {
 		t.Fatalf("deleted object lookup err = %v, want ErrObjectNotFound", err)
 	}
 
-	quiet := env.do(t, http.MethodDelete, "/"+env.bucket+"?delete", `<Delete><Quiet>true</Quiet><Object><Key>b.txt</Key></Object></Delete>`, map[string]string{"Content-Type": "application/xml"})
+	quietBody := `<Delete><Quiet>true</Quiet><Object><Key>b.txt</Key></Object></Delete>`
+	quiet := env.do(t, http.MethodDelete, "/"+env.bucket+"?delete", quietBody, deleteObjectsHeaders(quietBody))
 	if quiet.Code != http.StatusOK {
 		t.Fatalf("quiet status = %d, want 200; body=%s", quiet.Code, quiet.Body.String())
 	}
@@ -564,12 +606,18 @@ func TestDeleteObjectsInvalidRequests(t *testing.T) {
 	t.Parallel()
 
 	env := newObjectTestEnv(t)
+	missingDigest := env.do(t, http.MethodDelete, "/"+env.bucket+"?delete", `<Delete><Object><Key>a.txt</Key></Object></Delete>`, map[string]string{"Content-Type": "application/xml"})
+	if missingDigest.Code != http.StatusBadRequest {
+		t.Fatalf("missing digest status = %d, want 400; response=%s", missingDigest.Code, missingDigest.Body.String())
+	}
+	assertS3ErrorCode(t, missingDigest.Body.Bytes(), codeInvalidRequest)
+
 	cases := []string{
 		`<Delete>`,
 		`<Delete></Delete>`,
 	}
 	for _, body := range cases {
-		resp := env.do(t, http.MethodDelete, "/"+env.bucket+"?delete", body, map[string]string{"Content-Type": "application/xml"})
+		resp := env.do(t, http.MethodDelete, "/"+env.bucket+"?delete", body, deleteObjectsHeaders(body))
 		if resp.Code != http.StatusBadRequest {
 			t.Fatalf("body %q status = %d, want 400; response=%s", body, resp.Code, resp.Body.String())
 		}
@@ -582,7 +630,7 @@ func TestDeleteObjectsInvalidRequests(t *testing.T) {
 		tooMany.WriteString(fmt.Sprintf("<Object><Key>key-%d</Key></Object>", i))
 	}
 	tooMany.WriteString("</Delete>")
-	resp := env.do(t, http.MethodDelete, "/"+env.bucket+"?delete", tooMany.String(), map[string]string{"Content-Type": "application/xml"})
+	resp := env.do(t, http.MethodDelete, "/"+env.bucket+"?delete", tooMany.String(), deleteObjectsHeaders(tooMany.String()))
 	if resp.Code != http.StatusBadRequest {
 		t.Fatalf("too many status = %d, want 400; body=%s", resp.Code, resp.Body.String())
 	}
@@ -632,6 +680,44 @@ func TestCopyObject(t *testing.T) {
 	if replaced.ContentType != "application/json" {
 		t.Fatalf("ContentType = %q, want application/json", replaced.ContentType)
 	}
+}
+
+func TestSigV4CopyObjectRequiresSignedCopyHeaders(t *testing.T) {
+	t.Parallel()
+
+	env := newSigV4S3TestEnv(t)
+	seedObject(t, env, env.bucket, "source.txt", "source")
+
+	req := httptest.NewRequest(http.MethodPut, "/"+env.bucket+"/copied.txt", strings.NewReader(""))
+	req.Host = "localhost:9000"
+	req.Header.Set("x-amz-copy-source", "/"+env.bucket+"/source.txt")
+	auth.SignRequest(req, env.sigv4.AccessKeyID, env.sigv4.SecretKey, "us-east-1", "s3", []string{"host", "x-amz-date"}, auth.EmptyStringHash)
+
+	rr := httptest.NewRecorder()
+	env.router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403; body=%s", rr.Code, rr.Body.String())
+	}
+	assertS3ErrorCode(t, rr.Body.Bytes(), codeAccessDenied)
+}
+
+func TestSigV4DeleteObjectsRequiresSignedDigestHeader(t *testing.T) {
+	t.Parallel()
+
+	env := newSigV4S3TestEnv(t)
+	body := `<Delete><Object><Key>missing.txt</Key></Object></Delete>`
+	req := httptest.NewRequest(http.MethodDelete, "/"+env.bucket+"?delete", strings.NewReader(body))
+	req.Host = "localhost:9000"
+	req.Header.Set("Content-Type", "application/xml")
+	req.Header.Set("Content-MD5", base64MD5(body))
+	auth.SignRequest(req, env.sigv4.AccessKeyID, env.sigv4.SecretKey, "us-east-1", "s3", []string{"host", "x-amz-date"}, auth.EmptyStringHash)
+
+	rr := httptest.NewRecorder()
+	env.router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403; body=%s", rr.Code, rr.Body.String())
+	}
+	assertS3ErrorCode(t, rr.Body.Bytes(), codeAccessDenied)
 }
 
 func TestCopyObjectErrors(t *testing.T) {
@@ -789,6 +875,108 @@ func assertStringSlice(t *testing.T, got, want []string) {
 
 func createBucketConfigXML(locationConstraint string) string {
 	return fmt.Sprintf(`<CreateBucketConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><LocationConstraint>%s</LocationConstraint></CreateBucketConfiguration>`, locationConstraint)
+}
+
+func deleteObjectsHeaders(body string) map[string]string {
+	return map[string]string{
+		"Content-Type": "application/xml",
+		"Content-MD5":  base64MD5(body),
+	}
+}
+
+func seedObject(t *testing.T, env objectTestEnv, bucketName, key, body string) {
+	t.Helper()
+	storagePath, size, err := env.storage.Write(context.Background(), bucketName, key, strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("write object data: %v", err)
+	}
+	now := time.Now().UTC()
+	if err := env.objects.Create(context.Background(), &metadata.Object{
+		ID:          "seed-" + key,
+		BucketName:  bucketName,
+		Key:         key,
+		Size:        size,
+		ETag:        strings.Trim(quotedMD5(body), `"`),
+		ContentType: "application/octet-stream",
+		StoragePath: storagePath,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}); err != nil {
+		t.Fatalf("create object metadata: %v", err)
+	}
+}
+
+type staticAuthenticator struct {
+	principal auth.Principal
+}
+
+func (a staticAuthenticator) Authenticate(_ *http.Request) (auth.Principal, error) {
+	return a.principal, nil
+}
+
+func newScopedS3TestEnv(t *testing.T, principal auth.Principal) objectTestEnv {
+	t.Helper()
+
+	db, err := metadata.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	userRepo := metadata.NewUserRepository(db)
+	now := time.Now().UTC()
+	for _, user := range []*metadata.User{
+		{ID: "member-user", DisplayName: "Member User", AccessKeyID: "member", SecretHash: "hash", Role: "member", IsActive: true, CreatedAt: now, UpdatedAt: now},
+		{ID: "other-user", DisplayName: "Other User", AccessKeyID: "other", SecretHash: "hash", Role: "member", IsActive: true, CreatedAt: now, UpdatedAt: now},
+	} {
+		if err := userRepo.Create(context.Background(), user); err != nil {
+			t.Fatalf("create user %s: %v", user.ID, err)
+		}
+	}
+
+	bucketRepo := metadata.NewBucketRepository(db)
+	for _, bucket := range []*metadata.Bucket{
+		{Name: "member-bucket", OwnerID: "member-user", CreatedAt: now},
+		{Name: "other-bucket", OwnerID: "other-user", CreatedAt: now.Add(time.Second)},
+	} {
+		if err := bucketRepo.Create(context.Background(), bucket); err != nil {
+			t.Fatalf("create bucket %s: %v", bucket.Name, err)
+		}
+	}
+
+	disk, err := storage.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("new storage: %v", err)
+	}
+	objectRepo := metadata.NewObjectRepository(db)
+	handlers := &ObjectHandlers{
+		Users:   userRepo,
+		Buckets: bucketRepo,
+		Objects: objectRepo,
+		Storage: disk,
+		Logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	router := httpapi.NewRouter(config.Default(), nil, func(r chi.Router) {
+		r.Group(func(protected chi.Router) {
+			protected.Use(auth.RequireAuthentication(staticAuthenticator{principal: principal}, func(w http.ResponseWriter, r *http.Request, err error) {
+				WriteS3Error(w, r, http.StatusForbidden, codeAccessDenied, messageAccessDenied)
+			}))
+			RegisterBucketRoutes(protected, handlers)
+			RegisterObjectRoutes(protected, handlers)
+		})
+	})
+
+	return objectTestEnv{
+		router:  router,
+		users:   userRepo,
+		buckets: bucketRepo,
+		objects: objectRepo,
+		storage: disk,
+		bucket:  "member-bucket",
+		dataDir: t.TempDir(),
+		userID:  principal.UserID,
+	}
 }
 
 func newSigV4S3TestEnv(t *testing.T) objectTestEnv {

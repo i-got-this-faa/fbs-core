@@ -31,6 +31,12 @@ func (h *ObjectHandlers) CopyObject(w http.ResponseWriter, r *http.Request) {
 		WriteS3Error(w, r, http.StatusBadRequest, codeInvalidRequest, messageInvalidRequest)
 		return
 	}
+	if !requireSignedHeader(w, r, "x-amz-copy-source") {
+		return
+	}
+	if r.Header.Get("x-amz-metadata-directive") != "" && !requireSignedHeader(w, r, "x-amz-metadata-directive") {
+		return
+	}
 
 	source, err := parseCopySource(r.Header.Get("x-amz-copy-source"))
 	if err != nil {
@@ -42,12 +48,7 @@ func (h *ObjectHandlers) CopyObject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := h.Buckets.GetByName(r.Context(), source.bucketName); errors.Is(err, metadata.ErrBucketNotFound) {
-		WriteS3Error(w, r, http.StatusNotFound, codeNoSuchBucket, messageNoSuchBucket)
-		return
-	} else if err != nil {
-		h.logError("load source bucket", err, source.bucketName, "", "")
-		WriteS3Error(w, r, http.StatusInternalServerError, codeInternalError, messageInternalError)
+	if !h.ensureBucket(w, r, source.bucketName) {
 		return
 	}
 

@@ -20,6 +20,7 @@ type BucketRepository interface {
 	Create(ctx context.Context, bucket *Bucket) error
 	GetByName(ctx context.Context, name string) (*Bucket, error)
 	List(ctx context.Context) ([]Bucket, error)
+	ListByOwner(ctx context.Context, ownerID string) ([]Bucket, error)
 	Delete(ctx context.Context, name string) error
 }
 
@@ -86,6 +87,35 @@ func (r *sqliteBucketRepository) List(ctx context.Context) ([]Bucket, error) {
 
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("list buckets rows: %w", err)
+	}
+
+	return buckets, nil
+}
+
+func (r *sqliteBucketRepository) ListByOwner(ctx context.Context, ownerID string) ([]Bucket, error) {
+	const q = `
+		SELECT name, owner_id, created_at
+		FROM buckets
+		WHERE owner_id = ?
+		ORDER BY created_at ASC`
+
+	rows, err := r.db.QueryContext(ctx, q, ownerID)
+	if err != nil {
+		return nil, fmt.Errorf("list buckets by owner: %w", err)
+	}
+	defer rows.Close()
+
+	var buckets []Bucket
+	for rows.Next() {
+		b, err := scanBucketRow(rows)
+		if err != nil {
+			return nil, fmt.Errorf("list buckets by owner scan: %w", err)
+		}
+		buckets = append(buckets, *b)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list buckets by owner rows: %w", err)
 	}
 
 	return buckets, nil

@@ -35,14 +35,14 @@ func DeleteObject(ctx context.Context, repo metadata.ObjectRepository, disk stor
 		return nil, false, err
 	}
 
-	if err := repo.Delete(ctx, bucketName, key); err != nil {
-		return nil, false, err
-	}
-
 	if disk != nil {
 		if err := disk.Delete(ctx, obj.StoragePath); err != nil {
 			return nil, false, err
 		}
+	}
+
+	if err := repo.Delete(ctx, bucketName, key); err != nil {
+		return nil, false, err
 	}
 
 	return obj, true, nil

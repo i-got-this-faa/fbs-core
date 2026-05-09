@@ -1,6 +1,11 @@
 package s3
 
 import (
+	"bytes"
+	"crypto/md5"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/xml"
 	"errors"
 	"io"
@@ -9,6 +14,7 @@ import (
 )
 
 const maxDeleteObjects = 1000
+const unsignedPayloadHash = "UNSIGNED-PAYLOAD"
 
 type deleteObjectsRequest struct {
 	XMLName xml.Name              `xml:"Delete"`
@@ -36,14 +42,25 @@ func (h *ObjectHandlers) DeleteObjects(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req, err := parseDeleteObjectsRequest(r.Body)
+	req, err := parseDeleteObjectsRequest(r)
 	if err != nil {
 		status := http.StatusBadRequest
 		code := codeMalformedXML
 		message := messageMalformedXML
-		if errors.Is(err, errTooManyDeleteObjects) {
+		switch {
+		case errors.Is(err, errUnsignedDeleteDigest):
+			status = http.StatusForbidden
+			code = codeAccessDenied
+			message = messageAccessDenied
+		case errors.Is(err, errTooManyDeleteObjects), errors.Is(err, errMissingDeleteDigest):
 			code = codeInvalidRequest
 			message = messageInvalidRequest
+		case errors.Is(err, errInvalidDigest):
+			code = codeInvalidDigest
+			message = messageInvalidDigest
+		case errors.Is(err, errChecksumMismatch):
+			code = codeBadDigest
+			message = messageBadDigest
 		}
 		WriteS3Error(w, r, status, code, message)
 		return
@@ -76,16 +93,21 @@ func (h *ObjectHandlers) DeleteObjects(w http.ResponseWriter, r *http.Request) {
 }
 
 var errTooManyDeleteObjects = errors.New("too many delete objects")
+var errMissingDeleteDigest = errors.New("missing delete object digest")
+var errUnsignedDeleteDigest = errors.New("unsigned delete object digest")
 
-func parseDeleteObjectsRequest(body io.ReadCloser) (deleteObjectsRequest, error) {
-	defer body.Close()
+func parseDeleteObjectsRequest(r *http.Request) (deleteObjectsRequest, error) {
+	defer r.Body.Close()
 
-	payload, err := io.ReadAll(io.LimitReader(body, 2<<20))
+	payload, err := io.ReadAll(io.LimitReader(r.Body, 2<<20))
 	if err != nil {
 		return deleteObjectsRequest{}, err
 	}
 	if len(strings.TrimSpace(string(payload))) == 0 {
 		return deleteObjectsRequest{}, errors.New("empty delete request")
+	}
+	if err := verifyDeleteObjectsDigest(r, payload); err != nil {
+		return deleteObjectsRequest{}, err
 	}
 
 	var req deleteObjectsRequest
@@ -105,4 +127,38 @@ func parseDeleteObjectsRequest(body io.ReadCloser) (deleteObjectsRequest, error)
 	}
 
 	return req, nil
+}
+
+func verifyDeleteObjectsDigest(r *http.Request, payload []byte) error {
+	if value := r.Header.Get("Content-MD5"); value != "" {
+		if !requestHasSignedHeader(r, "content-md5") {
+			return errUnsignedDeleteDigest
+		}
+		expected, err := base64.StdEncoding.DecodeString(value)
+		if err != nil || len(expected) != md5.Size {
+			return errInvalidDigest
+		}
+		actual := md5.Sum(payload)
+		if !bytes.Equal(expected, actual[:]) {
+			return errChecksumMismatch
+		}
+		return nil
+	}
+
+	if value := r.Header.Get("X-Amz-Content-SHA256"); value != "" && value != unsignedPayloadHash {
+		if !requestHasSignedHeader(r, "x-amz-content-sha256") {
+			return errUnsignedDeleteDigest
+		}
+		expected, err := hex.DecodeString(value)
+		if err != nil || len(expected) != sha256.Size {
+			return errInvalidDigest
+		}
+		actual := sha256.Sum256(payload)
+		if !bytes.Equal(expected, actual[:]) {
+			return errChecksumMismatch
+		}
+		return nil
+	}
+
+	return errMissingDeleteDigest
 }

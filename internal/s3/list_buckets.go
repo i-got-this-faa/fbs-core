@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/i-got-this-faa/fbs/internal/auth"
+	"github.com/i-got-this-faa/fbs/internal/metadata"
 )
 
 type listAllMyBucketsResult struct {
@@ -35,7 +36,15 @@ func (h *ObjectHandlers) ListBuckets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	buckets, err := h.Buckets.List(r.Context())
+	var (
+		buckets []metadata.Bucket
+		err     error
+	)
+	if principal.Role == "admin" {
+		buckets, err = h.Buckets.List(r.Context())
+	} else {
+		buckets, err = h.Buckets.ListByOwner(r.Context(), principal.UserID)
+	}
 	if err != nil {
 		h.logError("list buckets", err, "", "", "")
 		WriteS3Error(w, r, http.StatusInternalServerError, codeInternalError, messageInternalError)
