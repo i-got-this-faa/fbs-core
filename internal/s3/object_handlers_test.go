@@ -550,6 +550,22 @@ func TestPublicReadCacheControlUsesRemainingSignatureLifetime(t *testing.T) {
 	}
 }
 
+func TestPublicReadCacheControlFloorsToActualRemainingSeconds(t *testing.T) {
+	t.Parallel()
+
+	handlers := &ObjectHandlers{
+		Now: func() time.Time {
+			return time.Unix(100, 900_000_000).UTC()
+		},
+	}
+	req := httptest.NewRequest(http.MethodGet, "/public/test-bucket/short.txt?expires=110&signature=sig", nil)
+
+	got := handlers.publicCacheControl(req)
+	if got != "public, max-age=9, must-revalidate" {
+		t.Fatalf("Cache-Control = %q, want max-age=9", got)
+	}
+}
+
 func TestDeleteObject(t *testing.T) {
 	t.Parallel()
 

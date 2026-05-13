@@ -596,6 +596,20 @@ func TestManagementPublicURLSigningDisabled(t *testing.T) {
 	}
 }
 
+func TestManagementPublicURLSigningDisabledWhitespaceSecret(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Default()
+	cfg.PublicReadSigningSecret = "   "
+	env := newManagementTestEnvWithConfig(t, cfg)
+	resp := env.do(t, http.MethodPost, "/api/management/buckets/photos/objects/2026/image.jpg/public-url", env.adminToken, strings.NewReader(`{}`))
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", resp.StatusCode)
+	}
+}
+
 func TestManagementPublicURLUsesPublicBaseURL(t *testing.T) {
 	t.Parallel()
 
@@ -735,7 +749,7 @@ func newManagementTestEnvWithConfig(t *testing.T, cfg config.Config) managementT
 		t.Fatalf("new storage: %v", err)
 	}
 	var signer *publicread.Signer
-	if cfg.PublicReadSigningSecret != "" {
+	if strings.TrimSpace(cfg.PublicReadSigningSecret) != "" {
 		signer, err = publicread.NewSigner(cfg.PublicReadSigningSecret, nil)
 		if err != nil {
 			t.Fatalf("new public read signer: %v", err)

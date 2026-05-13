@@ -476,3 +476,8 @@ func TestServerAuth_SigV4WrongSignature(t *testing.T) {
 		t.Fatalf("expected 401, got %d", resp.StatusCode)
 	}
 }
+
+func TestServerStartsWithWhitespacePublicReadSigningSecret(t *testing.T) {
+	_, _, shutdown := startTestServer(t, "FBS_PUBLIC_READ_SIGNING_SECRET=   ")
+	defer shutdown()
+}

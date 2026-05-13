@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/i-got-this-faa/fbs/internal/metadata"
 	"github.com/i-got-this-faa/fbs/internal/storage"
@@ -118,12 +119,12 @@ func (h *ObjectHandlers) publicCacheControl(r *http.Request) string {
 		return "public, max-age=0, must-revalidate"
 	}
 
-	remaining := expiresUnix - h.now().Unix()
-	if remaining < 0 {
-		remaining = 0
+	remaining := time.Unix(expiresUnix, 0).Sub(h.now())
+	if remaining <= 0 {
+		return "public, max-age=0, must-revalidate"
 	}
 
-	return fmt.Sprintf("public, max-age=%d, must-revalidate", remaining)
+	return fmt.Sprintf("public, max-age=%d, must-revalidate", int64(remaining/time.Second))
 }
 
 func mapPublicStorageReadError(w http.ResponseWriter, r *http.Request, h *ObjectHandlers, err error, obj *metadata.Object) {

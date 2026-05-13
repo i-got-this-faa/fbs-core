@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/go-chi/chi/v5"
@@ -85,7 +86,7 @@ func main() {
 	}
 
 	var publicReadSigner *publicread.Signer
-	if cfg.PublicReadSigningSecret != "" {
+	if strings.TrimSpace(cfg.PublicReadSigningSecret) != "" {
 		publicReadSigner, err = publicread.NewSigner(cfg.PublicReadSigningSecret, nil)
 		if err != nil {
 			logger.Error("failed to initialize public read signer", "error", err)
