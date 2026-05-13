@@ -477,6 +477,114 @@ func TestServerAuth_SigV4WrongSignature(t *testing.T) {
 	}
 }
 
+func TestServerSetupBootstrapCredentialsAccessManagement(t *testing.T) {
+	workDir := t.TempDir()
+	dbPath := filepath.Join(workDir, "test.db")
+
+	_, baseURL, shutdown := startTestServer(t, "FBS_DB_PATH="+dbPath)
+	defer shutdown()
+
+	statusResp, err := http.Get(baseURL + "/api/setup/status")
+	if err != nil {
+		t.Fatalf("status request failed: %v", err)
+	}
+	defer statusResp.Body.Close()
+	if statusResp.StatusCode != http.StatusOK {
+		t.Fatalf("status code = %d, want 200", statusResp.StatusCode)
+	}
+	var statusBody struct {
+		BootstrapRequired bool   `json:"bootstrap_required"`
+		Region            string `json:"region"`
+		ManagementURL     string `json:"management_url"`
+		S3URL             string `json:"s3_url"`
+	}
+	if err := json.NewDecoder(statusResp.Body).Decode(&statusBody); err != nil {
+		t.Fatalf("decode status: %v", err)
+	}
+	if !statusBody.BootstrapRequired {
+		t.Fatal("bootstrap_required = false, want true")
+	}
+	if statusBody.Region != "us-east-1" {
+		t.Fatalf("region = %q, want us-east-1", statusBody.Region)
+	}
+
+	bootstrapResp, err := http.Post(baseURL+"/api/setup/bootstrap", "application/json", strings.NewReader(`{"display_name":"Admin User"}`))
+	if err != nil {
+		t.Fatalf("bootstrap request failed: %v", err)
+	}
+	defer bootstrapResp.Body.Close()
+	bootstrapBodyBytes, err := io.ReadAll(bootstrapResp.Body)
+	if err != nil {
+		t.Fatalf("read bootstrap response: %v", err)
+	}
+	if bootstrapResp.StatusCode != http.StatusCreated {
+		t.Fatalf("bootstrap code = %d, want 201; body=%s", bootstrapResp.StatusCode, string(bootstrapBodyBytes))
+	}
+	if bootstrapResp.Header.Get("Cache-Control") != "no-store" {
+		t.Fatalf("Cache-Control = %q, want no-store", bootstrapResp.Header.Get("Cache-Control"))
+	}
+	if strings.Contains(string(bootstrapBodyBytes), "secret_hash") {
+		t.Fatalf("bootstrap response exposed secret_hash: %s", string(bootstrapBodyBytes))
+	}
+
+	var bootstrapBody struct {
+		Key struct {
+			ID               string `json:"id"`
+			DisplayName      string `json:"display_name"`
+			AccessKeyID      string `json:"access_key_id"`
+			SigV4AccessKeyID string `json:"sigv4_access_key_id"`
+			Role             string `json:"role"`
+			IsActive         bool   `json:"is_active"`
+		} `json:"key"`
+		BearerToken string `json:"bearer_token"`
+		SigV4       struct {
+			AccessKeyID string `json:"access_key_id"`
+			SecretKey   string `json:"secret_key"`
+		} `json:"sigv4"`
+		Region        string `json:"region"`
+		ManagementURL string `json:"management_url"`
+		S3URL         string `json:"s3_url"`
+	}
+	if err := json.Unmarshal(bootstrapBodyBytes, &bootstrapBody); err != nil {
+		t.Fatalf("decode bootstrap: %v", err)
+	}
+	if bootstrapBody.Key.Role != "admin" || !bootstrapBody.Key.IsActive {
+		t.Fatalf("bootstrap key = %+v, want active admin", bootstrapBody.Key)
+	}
+
+	bearerReq, _ := http.NewRequest(http.MethodGet, baseURL+"/api/management/metrics", nil)
+	bearerReq.Header.Set("Authorization", "Bearer "+bootstrapBody.BearerToken)
+	bearerResp, err := http.DefaultClient.Do(bearerReq)
+	if err != nil {
+		t.Fatalf("bearer metrics request failed: %v", err)
+	}
+	defer bearerResp.Body.Close()
+	if bearerResp.StatusCode != http.StatusOK {
+		t.Fatalf("bearer metrics code = %d, want 200", bearerResp.StatusCode)
+	}
+
+	sigV4Req, _ := http.NewRequest(http.MethodGet, baseURL+"/api/management/metrics", nil)
+	sigV4Req.Host = strings.TrimPrefix(baseURL, "http://")
+	auth.SignRequest(sigV4Req, bootstrapBody.SigV4.AccessKeyID, bootstrapBody.SigV4.SecretKey, "us-east-1", "s3", []string{"host", "x-amz-content-sha256", "x-amz-date"}, auth.EmptyStringHash)
+	sigV4Resp, err := http.DefaultClient.Do(sigV4Req)
+	if err != nil {
+		t.Fatalf("sigv4 metrics request failed: %v", err)
+	}
+	defer sigV4Resp.Body.Close()
+	if sigV4Resp.StatusCode != http.StatusOK {
+		t.Fatalf("sigv4 metrics code = %d, want 200", sigV4Resp.StatusCode)
+	}
+
+	secondResp, err := http.Post(baseURL+"/api/setup/bootstrap", "application/json", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatalf("second bootstrap request failed: %v", err)
+	}
+	defer secondResp.Body.Close()
+	if secondResp.StatusCode != http.StatusConflict {
+		t.Fatalf("second bootstrap code = %d, want 409", secondResp.StatusCode)
+	}
+}
+
 func TestServerStartsWithWhitespacePublicReadSigningSecret(t *testing.T) {
 	_, _, shutdown := startTestServer(t, "FBS_PUBLIC_READ_SIGNING_SECRET=   ")
 	defer shutdown()

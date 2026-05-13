@@ -31,6 +31,7 @@ type managementTestEnv struct {
 	router       http.Handler
 	db           *sql.DB
 	adminToken   string
+	adminSigV4   auth.SigV4Credentials
 	adminUserID  string
 	memberToken  string
 	memberUserID string
@@ -557,6 +558,42 @@ func TestManagementAuthRequiresAdmin(t *testing.T) {
 	}
 }
 
+func TestManagementAuthAcceptsAdminSigV4(t *testing.T) {
+	t.Parallel()
+
+	env := newManagementTestEnv(t)
+
+	resp := env.doSigV4(t, http.MethodGet, "/api/management/metrics", env.adminSigV4, env.adminSigV4.SecretKey)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("admin SigV4 status = %d, want %d; body=%s", resp.StatusCode, http.StatusOK, readBody(t, resp))
+	}
+}
+
+func TestManagementAuthRejectsMemberSigV4(t *testing.T) {
+	t.Parallel()
+
+	env := newManagementTestEnv(t)
+
+	resp := env.doSigV4(t, http.MethodGet, "/api/management/metrics", env.memberSigV4, env.memberSigV4.SecretKey)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("member SigV4 status = %d, want %d", resp.StatusCode, http.StatusForbidden)
+	}
+}
+
+func TestManagementAuthRejectsBadSigV4Signature(t *testing.T) {
+	t.Parallel()
+
+	env := newManagementTestEnv(t)
+
+	resp := env.doSigV4(t, http.MethodGet, "/api/management/metrics", env.adminSigV4, "wrong-secret")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("bad SigV4 status = %d, want %d", resp.StatusCode, http.StatusUnauthorized)
+	}
+}
+
 func TestManagementCORSPreflight(t *testing.T) {
 	t.Parallel()
 
@@ -731,7 +768,7 @@ func newManagementTestEnvWithConfig(t *testing.T, cfg config.Config) managementT
 
 	ctx := context.Background()
 	userRepo := metadata.NewUserRepository(db)
-	adminToken, _, adminUser, err := auth.CreateBearerToken(ctx, userRepo, "Admin User", "admin")
+	adminToken, adminSigV4, adminUser, err := auth.CreateBearerToken(ctx, userRepo, "Admin User", "admin")
 	if err != nil {
 		t.Fatalf("create admin token: %v", err)
 	}
@@ -768,6 +805,7 @@ func newManagementTestEnvWithConfig(t *testing.T, cfg config.Config) managementT
 	authChain := &auth.ChainAuthenticator{
 		Authenticators: []auth.Authenticator{
 			&auth.BearerAuthenticator{Repo: userRepo},
+			&auth.SigV4Authenticator{Repo: metadata.NewSigV4UserRepository(db)},
 		},
 	}
 
@@ -795,6 +833,7 @@ func newManagementTestEnvWithConfig(t *testing.T, cfg config.Config) managementT
 		router:       router,
 		db:           db,
 		adminToken:   adminToken.RawToken,
+		adminSigV4:   adminSigV4,
 		adminUserID:  adminUser.ID,
 		memberToken:  memberToken.RawToken,
 		memberUserID: memberUser.ID,
@@ -874,6 +913,18 @@ func (e managementTestEnv) do(t *testing.T, method, path, token string, body *st
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+
+	rr := httptest.NewRecorder()
+	e.router.ServeHTTP(rr, req)
+	return rr.Result()
+}
+
+func (e managementTestEnv) doSigV4(t *testing.T, method, path string, credentials auth.SigV4Credentials, secretKey string) *http.Response {
+	t.Helper()
+
+	req := httptest.NewRequest(method, path, strings.NewReader(""))
+	req.Host = "127.0.0.1:9000"
+	auth.SignRequest(req, credentials.AccessKeyID, secretKey, "us-east-1", "s3", []string{"host", "x-amz-content-sha256", "x-amz-date"}, auth.EmptyStringHash)
 
 	rr := httptest.NewRecorder()
 	e.router.ServeHTTP(rr, req)

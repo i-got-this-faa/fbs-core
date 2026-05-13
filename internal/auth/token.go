@@ -15,8 +15,8 @@ import (
 )
 
 const (
-	tokenPrefix    = "fbsa_"
-	sigV4Prefix    = "fbsv4_"
+	tokenPrefix = "fbsa_"
+	sigV4Prefix = "fbsv4_"
 )
 
 type IssuedToken struct {
@@ -69,6 +69,23 @@ func IssueSigV4Credentials() (SigV4Credentials, error) {
 }
 
 func CreateBearerToken(ctx context.Context, repo metadata.UserRepository, displayName, role string) (IssuedToken, SigV4Credentials, *metadata.User, error) {
+	return createUserCredentials(ctx, repo.Create, displayName, role, "create bearer token user")
+}
+
+func CreateFirstAdmin(ctx context.Context, repo metadata.BootstrapRepository, displayName string) (IssuedToken, SigV4Credentials, *metadata.User, error) {
+	if displayName == "" {
+		displayName = "Initial Admin"
+	}
+	return createUserCredentials(ctx, repo.CreateFirstUser, displayName, "admin", "create first admin user")
+}
+
+func createUserCredentials(
+	ctx context.Context,
+	createUser func(context.Context, *metadata.User) error,
+	displayName string,
+	role string,
+	errPrefix string,
+) (IssuedToken, SigV4Credentials, *metadata.User, error) {
 	issued, err := IssueBearerToken()
 	if err != nil {
 		return IssuedToken{}, SigV4Credentials{}, nil, err
@@ -93,12 +110,13 @@ func CreateBearerToken(ctx context.Context, repo metadata.UserRepository, displa
 		UpdatedAt:        now,
 	}
 
-	if err := repo.Create(ctx, user); err != nil {
-		return IssuedToken{}, SigV4Credentials{}, nil, fmt.Errorf("create bearer token user: %w", err)
+	if err := createUser(ctx, user); err != nil {
+		return IssuedToken{}, SigV4Credentials{}, nil, fmt.Errorf("%s: %w", errPrefix, err)
 	}
 
-	// The secret key is presented once via SigV4Credentials and must never
-	// be retrievable again through the user object.
+	// Secrets are presented through IssuedToken and SigV4Credentials. The
+	// returned user is safe for response DTOs.
+	user.SecretHash = ""
 	user.SigV4SecretKey = ""
 
 	return issued, sigv4Creds, user, nil

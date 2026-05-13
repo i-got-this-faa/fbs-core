@@ -10,16 +10,16 @@ import (
 
 // User represents a row in the users table.
 type User struct {
-	ID             string
-	DisplayName    string
-	AccessKeyID    string
-	SecretHash     string
+	ID               string
+	DisplayName      string
+	AccessKeyID      string
+	SecretHash       string
 	SigV4AccessKeyID string
 	SigV4SecretKey   string
-	Role           string
-	IsActive       bool
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	Role             string
+	IsActive         bool
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 // UserRepository defines CRUD operations for users.
@@ -42,6 +42,18 @@ type SigV4UserRepository interface {
 // ErrUserNotFound is returned when a user lookup yields no rows.
 var ErrUserNotFound = errors.New("user not found")
 
+// ErrUsersAlreadyExist is returned when first-start bootstrap is attempted
+// after at least one user already exists.
+var ErrUsersAlreadyExist = errors.New("users already exist")
+
+// BootstrapRepository is the narrow user-store surface needed by first-start
+// setup. It exists separately from UserRepository because bootstrap has a
+// stricter atomic create-if-empty contract.
+type BootstrapRepository interface {
+	CreateFirstUser(ctx context.Context, user *User) error
+	UserCount(ctx context.Context) (int64, error)
+}
+
 type sqliteUserRepository struct {
 	db *sql.DB
 }
@@ -56,7 +68,70 @@ func NewSigV4UserRepository(db *sql.DB) SigV4UserRepository {
 	return &sqliteUserRepository{db: db}
 }
 
+// NewBootstrapRepository returns a BootstrapRepository backed by the given *sql.DB.
+func NewBootstrapRepository(db *sql.DB) BootstrapRepository {
+	return &sqliteUserRepository{db: db}
+}
+
 func (r *sqliteUserRepository) Create(ctx context.Context, user *User) error {
+	if err := insertUser(ctx, r.db, user); err != nil {
+		return fmt.Errorf("create user: %w", err)
+	}
+
+	return nil
+}
+
+func (r *sqliteUserRepository) CreateFirstUser(ctx context.Context, user *User) error {
+	conn, err := r.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("create first user conn: %w", err)
+	}
+	defer conn.Close()
+
+	if _, err := conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+		return fmt.Errorf("create first user begin: %w", err)
+	}
+
+	committed := false
+	defer func() {
+		if !committed {
+			_, _ = conn.ExecContext(ctx, "ROLLBACK")
+		}
+	}()
+
+	var count int64
+	if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM users`).Scan(&count); err != nil {
+		return fmt.Errorf("create first user count: %w", err)
+	}
+	if count > 0 {
+		return ErrUsersAlreadyExist
+	}
+
+	if err := insertUser(ctx, conn, user); err != nil {
+		return fmt.Errorf("create first user insert: %w", err)
+	}
+
+	if _, err := conn.ExecContext(ctx, "COMMIT"); err != nil {
+		return fmt.Errorf("create first user commit: %w", err)
+	}
+	committed = true
+
+	return nil
+}
+
+func (r *sqliteUserRepository) UserCount(ctx context.Context) (int64, error) {
+	var count int64
+	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM users`).Scan(&count); err != nil {
+		return 0, fmt.Errorf("user count: %w", err)
+	}
+	return count, nil
+}
+
+type userInserter interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+func insertUser(ctx context.Context, db userInserter, user *User) error {
 	const q = `
 		INSERT INTO users (id, display_name, access_key_id, secret_hash, sigv4_access_key_id, sigv4_secret_key, role, is_active, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
@@ -69,7 +144,7 @@ func (r *sqliteUserRepository) Create(ctx context.Context, user *User) error {
 	sigv4Secret := sql.NullString{String: user.SigV4SecretKey, Valid: user.SigV4SecretKey != ""}
 
 	isActive := boolToInt(user.IsActive)
-	_, err := r.db.ExecContext(ctx, q,
+	_, err := db.ExecContext(ctx, q,
 		user.ID,
 		user.DisplayName,
 		user.AccessKeyID,
@@ -82,7 +157,7 @@ func (r *sqliteUserRepository) Create(ctx context.Context, user *User) error {
 		user.UpdatedAt.UTC(),
 	)
 	if err != nil {
-		return fmt.Errorf("create user: %w", err)
+		return err
 	}
 
 	return nil

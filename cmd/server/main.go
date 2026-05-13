@@ -21,6 +21,7 @@ import (
 	"github.com/i-got-this-faa/fbs/internal/publicread"
 	"github.com/i-got-this-faa/fbs/internal/s3"
 	"github.com/i-got-this-faa/fbs/internal/server"
+	"github.com/i-got-this-faa/fbs/internal/setup"
 	"github.com/i-got-this-faa/fbs/internal/storage"
 )
 
@@ -61,6 +62,7 @@ func main() {
 
 	userRepo := metadata.NewUserRepository(db)
 	sigv4Repo := metadata.NewSigV4UserRepository(db)
+	bootstrapRepo := metadata.NewBootstrapRepository(db)
 	var authenticators []auth.Authenticator
 	if cfg.DevMode {
 		authenticators = append(authenticators, &auth.DevAuthenticator{})
@@ -74,6 +76,7 @@ func main() {
 		managementAuthenticators = append(managementAuthenticators, &auth.DevAuthenticator{})
 	}
 	managementAuthenticators = append(managementAuthenticators, &auth.BearerAuthenticator{Repo: userRepo})
+	managementAuthenticators = append(managementAuthenticators, &auth.SigV4Authenticator{Repo: sigv4Repo})
 	managementAuthChain := &auth.ChainAuthenticator{Authenticators: managementAuthenticators}
 
 	rawBucketRepo := metadata.NewBucketRepository(db)
@@ -114,9 +117,23 @@ func main() {
 		S3CacheControl:   cfg.S3CacheControl,
 		PublicReadSigner: publicReadSigner,
 	}
+	setupHandlers := &setup.Handlers{
+		Bootstrap: bootstrapRepo,
+		Config:    cfg,
+	}
+
+	userCount, err := bootstrapRepo.UserCount(context.Background())
+	if err != nil {
+		logger.Error("failed to inspect first start setup state", "error", err)
+		os.Exit(1)
+	}
+	if userCount == 0 {
+		logger.Info("first start setup required", "setup_url", startupSetupURL(cfg))
+	}
 
 	router := httpapi.NewRouter(cfg, logger, func(r chi.Router) {
 		s3.RegisterPublicReadRoutes(r, objectHandlers)
+		setup.RegisterRoutes(r, setupHandlers)
 		r.Route("/api/management", func(managementRoutes chi.Router) {
 			managementRoutes.Use(auth.RequireAuthentication(managementAuthChain, management.WriteAuthError))
 			managementRoutes.Use(auth.RequireRole("admin", management.WriteAuthError))
@@ -175,6 +192,18 @@ func main() {
 			os.Exit(1)
 		}
 	}
+}
+
+func startupSetupURL(cfg config.Config) string {
+	baseURL := strings.TrimRight(strings.TrimSpace(cfg.PublicBaseURL), "/")
+	if baseURL == "" {
+		addr := strings.TrimSpace(cfg.HTTPAddr)
+		if strings.HasPrefix(addr, ":") {
+			addr = "127.0.0.1" + addr
+		}
+		baseURL = "http://" + addr
+	}
+	return baseURL + "/api/setup/status"
 }
 
 func writeS3AuthError(w http.ResponseWriter, r *http.Request, err error) {
