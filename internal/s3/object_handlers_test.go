@@ -25,6 +25,7 @@ import (
 	"github.com/i-got-this-faa/fbs/internal/config"
 	httpapi "github.com/i-got-this-faa/fbs/internal/http"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
+	"github.com/i-got-this-faa/fbs/internal/publicread"
 	"github.com/i-got-this-faa/fbs/internal/storage"
 )
 
@@ -35,9 +36,11 @@ type objectTestEnv struct {
 	objects metadata.ObjectRepository
 	storage storage.DiskEngine
 	sigv4   auth.SigV4Credentials
+	signer  *publicread.Signer
 	bucket  string
 	dataDir string
 	userID  string
+	now     time.Time
 }
 
 func newObjectTestEnv(t *testing.T) objectTestEnv {
@@ -72,18 +75,27 @@ func newObjectTestEnv(t *testing.T) objectTestEnv {
 	}
 
 	objectRepo := metadata.NewObjectRepository(db)
+	now := time.Date(2026, 4, 30, 12, 0, 0, 0, time.UTC)
+	signer, err := publicread.NewSigner("12345678901234567890123456789012", func() time.Time { return now })
+	if err != nil {
+		t.Fatalf("new public read signer: %v", err)
+	}
+
 	handlers := &ObjectHandlers{
-		Users:   userRepo,
-		Buckets: bucketRepo,
-		Objects: objectRepo,
-		Storage: disk,
-		Now:     func() time.Time { return time.Date(2026, 4, 30, 12, 0, 0, 0, time.UTC) },
-		NewID:   newSequentialID(),
-		Logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Users:            userRepo,
+		Buckets:          bucketRepo,
+		Objects:          objectRepo,
+		Storage:          disk,
+		Now:              func() time.Time { return now },
+		NewID:            newSequentialID(),
+		Logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+		S3CacheControl:   config.Default().S3CacheControl,
+		PublicReadSigner: signer,
 	}
 
 	cfg := config.Default()
 	router := httpapi.NewRouter(cfg, nil, func(r chi.Router) {
+		RegisterPublicReadRoutes(r, handlers)
 		r.Group(func(protected chi.Router) {
 			protected.Use(auth.RequireAuthentication(&auth.DevAuthenticator{}, func(w http.ResponseWriter, r *http.Request, err error) {
 				WriteS3Error(w, r, http.StatusForbidden, codeAccessDenied, messageAccessDenied)
@@ -100,9 +112,11 @@ func newObjectTestEnv(t *testing.T) objectTestEnv {
 		objects: objectRepo,
 		storage: disk,
 		sigv4:   sigv4,
+		signer:  signer,
 		bucket:  bucketName,
 		dataDir: dataDir,
 		userID:  user.ID,
+		now:     now,
 	}
 }
 
@@ -302,6 +316,58 @@ func TestGetObject(t *testing.T) {
 	if got := resp.Header().Get("Last-Modified"); got == "" {
 		t.Fatal("expected Last-Modified header")
 	}
+	if got := resp.Header().Get("Cache-Control"); got != config.Default().S3CacheControl {
+		t.Fatalf("Cache-Control = %q, want %q", got, config.Default().S3CacheControl)
+	}
+}
+
+func TestGetObjectRange(t *testing.T) {
+	t.Parallel()
+
+	env := newObjectTestEnv(t)
+	env.mustPut(t, "range.txt", "range body")
+
+	resp := env.do(t, http.MethodGet, "/"+env.bucket+"/range.txt", "", map[string]string{
+		"Range": "bytes=0-3",
+	})
+	if resp.Code != http.StatusPartialContent {
+		t.Fatalf("status = %d, want 206; body=%s", resp.Code, resp.Body.String())
+	}
+	if resp.Body.String() != "rang" {
+		t.Fatalf("body = %q, want rang", resp.Body.String())
+	}
+	if got := resp.Header().Get("Content-Range"); got != "bytes 0-3/10" {
+		t.Fatalf("Content-Range = %q, want bytes 0-3/10", got)
+	}
+}
+
+func TestGetObjectIfNoneMatch(t *testing.T) {
+	t.Parallel()
+
+	env := newObjectTestEnv(t)
+	body := "conditional"
+	env.mustPut(t, "conditional.txt", body)
+
+	resp := env.do(t, http.MethodGet, "/"+env.bucket+"/conditional.txt", "", map[string]string{
+		"If-None-Match": quotedMD5(body),
+	})
+	if resp.Code != http.StatusNotModified {
+		t.Fatalf("status = %d, want 304; body=%s", resp.Code, resp.Body.String())
+	}
+}
+
+func TestGetObjectIfModifiedSince(t *testing.T) {
+	t.Parallel()
+
+	env := newObjectTestEnv(t)
+	env.mustPut(t, "modified.txt", "body")
+
+	resp := env.do(t, http.MethodGet, "/"+env.bucket+"/modified.txt", "", map[string]string{
+		"If-Modified-Since": env.now.Format(http.TimeFormat),
+	})
+	if resp.Code != http.StatusNotModified {
+		t.Fatalf("status = %d, want 304; body=%s", resp.Code, resp.Body.String())
+	}
 }
 
 func TestGetObjectNoSuchKey(t *testing.T) {
@@ -331,6 +397,27 @@ func TestHeadObject(t *testing.T) {
 	if got := resp.Header().Get("ETag"); got == "" {
 		t.Fatal("expected ETag header")
 	}
+	if got := resp.Header().Get("Cache-Control"); got != config.Default().S3CacheControl {
+		t.Fatalf("Cache-Control = %q, want %q", got, config.Default().S3CacheControl)
+	}
+}
+
+func TestHeadObjectMatchesGetHeaders(t *testing.T) {
+	t.Parallel()
+
+	env := newObjectTestEnv(t)
+	env.mustPut(t, "head-headers.txt", "head body")
+
+	getResp := env.do(t, http.MethodGet, "/"+env.bucket+"/head-headers.txt", "", nil)
+	headResp := env.do(t, http.MethodHead, "/"+env.bucket+"/head-headers.txt", "", nil)
+	for _, header := range []string{"ETag", "Content-Type", "Last-Modified", "Cache-Control"} {
+		if got, want := headResp.Header().Get(header), getResp.Header().Get(header); got != want {
+			t.Fatalf("HEAD %s = %q, want GET value %q", header, got, want)
+		}
+	}
+	if headResp.Body.Len() != 0 {
+		t.Fatalf("HEAD body length = %d, want 0", headResp.Body.Len())
+	}
 }
 
 func TestGetObjectMissingBackingFile(t *testing.T) {
@@ -357,6 +444,110 @@ func TestGetObjectMissingBackingFile(t *testing.T) {
 		t.Fatalf("status = %d, want 500; body=%s", resp.Code, resp.Body.String())
 	}
 	assertS3ErrorCode(t, resp.Body.Bytes(), codeInternalError)
+}
+
+func TestPublicReadMissingSignature(t *testing.T) {
+	t.Parallel()
+
+	env := newObjectTestEnv(t)
+	env.mustPut(t, "public.txt", "body")
+
+	resp := env.do(t, http.MethodGet, "/public/"+env.bucket+"/public.txt", "", nil)
+	if resp.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", resp.Code)
+	}
+	if got := resp.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("Cache-Control = %q, want no-store", got)
+	}
+}
+
+func TestPublicReadExpiredSignature(t *testing.T) {
+	t.Parallel()
+
+	env := newObjectTestEnv(t)
+	env.mustPut(t, "public.txt", "body")
+
+	resp := env.do(t, http.MethodGet, env.publicReadURL("public.txt", -time.Second), "", nil)
+	if resp.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", resp.Code)
+	}
+}
+
+func TestPublicReadBadSignature(t *testing.T) {
+	t.Parallel()
+
+	env := newObjectTestEnv(t)
+	env.mustPut(t, "public.txt", "body")
+
+	path := publicread.ObjectPath(env.bucket, "public.txt")
+	resp := env.do(t, http.MethodGet, path+"?expires="+strconv.FormatInt(env.now.Add(time.Hour).Unix(), 10)+"&signature="+strings.Repeat("0", 64), "", nil)
+	if resp.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", resp.Code)
+	}
+}
+
+func TestPublicReadGet(t *testing.T) {
+	t.Parallel()
+
+	env := newObjectTestEnv(t)
+	env.mustPut(t, "public.txt", "public body")
+
+	resp := env.do(t, http.MethodGet, env.publicReadURL("public.txt", time.Hour), "", nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", resp.Code, resp.Body.String())
+	}
+	if resp.Body.String() != "public body" {
+		t.Fatalf("body = %q, want public body", resp.Body.String())
+	}
+	if got := resp.Header().Get("Cache-Control"); got != "public, max-age=3600, must-revalidate" {
+		t.Fatalf("Cache-Control = %q, want public max-age", got)
+	}
+}
+
+func TestPublicReadHead(t *testing.T) {
+	t.Parallel()
+
+	env := newObjectTestEnv(t)
+	env.mustPut(t, "public-head.txt", "public body")
+
+	resp := env.do(t, http.MethodHead, env.publicReadURL("public-head.txt", time.Hour), "", nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", resp.Code, resp.Body.String())
+	}
+	if resp.Body.Len() != 0 {
+		t.Fatalf("HEAD body length = %d, want 0", resp.Body.Len())
+	}
+	if got := resp.Header().Get("Cache-Control"); got != "public, max-age=3600, must-revalidate" {
+		t.Fatalf("Cache-Control = %q, want public max-age", got)
+	}
+}
+
+func TestPublicReadMissingObject(t *testing.T) {
+	t.Parallel()
+
+	env := newObjectTestEnv(t)
+	resp := env.do(t, http.MethodGet, env.publicReadURL("missing.txt", time.Hour), "", nil)
+	if resp.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", resp.Code)
+	}
+	if got := resp.Header().Get("Cache-Control"); got != "no-store" {
+		t.Fatalf("Cache-Control = %q, want no-store", got)
+	}
+}
+
+func TestPublicReadCacheControlUsesRemainingSignatureLifetime(t *testing.T) {
+	t.Parallel()
+
+	env := newObjectTestEnv(t)
+	env.mustPut(t, "short.txt", "body")
+
+	resp := env.do(t, http.MethodGet, env.publicReadURL("short.txt", 10*time.Second), "", nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", resp.Code, resp.Body.String())
+	}
+	if got := resp.Header().Get("Cache-Control"); got != "public, max-age=10, must-revalidate" {
+		t.Fatalf("Cache-Control = %q, want max-age=10", got)
+	}
 }
 
 func TestDeleteObject(t *testing.T) {
@@ -425,6 +616,13 @@ func (e objectTestEnv) mustPut(t *testing.T, key, body string) {
 	if resp.Code != http.StatusOK {
 		t.Fatalf("put %s status = %d, want 200; body=%s", key, resp.Code, resp.Body.String())
 	}
+}
+
+func (e objectTestEnv) publicReadURL(key string, ttl time.Duration) string {
+	expiresAt := e.now.Add(ttl)
+	path := publicread.ObjectPath(e.bucket, key)
+	signature := e.signer.SignPath(path, expiresAt)
+	return path + "?expires=" + strconv.FormatInt(expiresAt.Unix(), 10) + "&signature=" + signature
 }
 
 func (e objectTestEnv) do(t *testing.T, method, path, body string, headers map[string]string) *httptest.ResponseRecorder {

@@ -11,8 +11,21 @@ func RegisterBucketRoutes(r chi.Router, h *ObjectHandlers) {
 }
 
 func RegisterObjectRoutes(r chi.Router, h *ObjectHandlers) {
-	r.Put("/{bucket}/*", h.DispatchObjectPut)
+	RegisterObjectReadRoutes(r, h)
+	RegisterObjectMutationRoutes(r, h)
+}
+
+func RegisterObjectReadRoutes(r chi.Router, h *ObjectHandlers) {
 	r.Get("/{bucket}/*", h.DispatchObjectGet)
 	r.Head("/{bucket}/*", h.HeadObject)
+}
+
+func RegisterObjectMutationRoutes(r chi.Router, h *ObjectHandlers) {
+	r.Put("/{bucket}/*", h.DispatchObjectPut)
 	r.Delete("/{bucket}/*", h.DispatchObjectDelete)
+}
+
+func RegisterPublicReadRoutes(r chi.Router, h *ObjectHandlers) {
+	r.Get("/public/{bucket}/*", h.PublicReadObject)
+	r.Head("/public/{bucket}/*", h.PublicReadObject)
 }

@@ -12,6 +12,7 @@ func RegisterRoutes(r chi.Router, h *Handlers) {
 	r.Post("/buckets/{bucket}/empty", h.EmptyBucket)
 	r.Get("/buckets/{bucket}/objects", h.ListObjects)
 	r.Get("/buckets/{bucket}/objects/*", h.GetObject)
+	r.Post("/buckets/{bucket}/objects/*", h.CreatePublicObjectURL)
 	r.Get("/keys", h.ListKeys)
 	r.Post("/keys", h.CreateKey)
 	r.Patch("/keys/{id}", h.PatchKey)

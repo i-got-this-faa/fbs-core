@@ -50,6 +50,16 @@ type objectDetailResponse struct {
 	Object objectDetail `json:"object"`
 }
 
+type publicObjectURLRequest struct {
+	ExpiresInSeconds *int64 `json:"expires_in_seconds"`
+}
+
+type publicObjectURLResponse struct {
+	URL          string `json:"url"`
+	ExpiresAt    string `json:"expires_at"`
+	CacheControl string `json:"cache_control"`
+}
+
 type objectDetail struct {
 	Key         string `json:"key"`
 	Bucket      string `json:"bucket"`

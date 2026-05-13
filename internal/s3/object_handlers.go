@@ -2,7 +2,6 @@ package s3
 
 import (
 	"errors"
-	"io"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -11,18 +10,21 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
+	"github.com/i-got-this-faa/fbs/internal/publicread"
 	"github.com/i-got-this-faa/fbs/internal/storage"
 )
 
 type ObjectHandlers struct {
-	Users    metadata.UserRepository
-	Buckets  metadata.BucketRepository
-	Objects  metadata.ObjectRepository
-	Activity metadata.ActivityRepository
-	Storage  storage.DiskEngine
-	Now      func() time.Time
-	NewID    func() string
-	Logger   *slog.Logger
+	Users            metadata.UserRepository
+	Buckets          metadata.BucketRepository
+	Objects          metadata.ObjectRepository
+	Activity         metadata.ActivityRepository
+	Storage          storage.DiskEngine
+	Now              func() time.Time
+	NewID            func() string
+	Logger           *slog.Logger
+	S3CacheControl   string
+	PublicReadSigner *publicread.Signer
 }
 
 func (h *ObjectHandlers) PutObject(w http.ResponseWriter, r *http.Request) {
@@ -92,18 +94,7 @@ func (h *ObjectHandlers) GetObject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	file, err := h.Storage.Open(r.Context(), obj.StoragePath)
-	if err != nil {
-		mapStorageReadError(w, r, h, err, obj)
-		return
-	}
-	defer file.Close()
-
-	setObjectHeaders(w, obj)
-	w.WriteHeader(http.StatusOK)
-	if _, err := io.Copy(w, file); err != nil {
-		h.logError("stream object body", err, obj.BucketName, obj.Key, obj.StoragePath)
-	}
+	h.serveObject(w, r, obj, h.S3CacheControl, mapAuthenticatedStorageReadError)
 }
 
 func (h *ObjectHandlers) HeadObject(w http.ResponseWriter, r *http.Request) {
@@ -113,15 +104,7 @@ func (h *ObjectHandlers) HeadObject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	file, err := h.Storage.Open(r.Context(), obj.StoragePath)
-	if err != nil {
-		mapStorageReadError(w, r, h, err, obj)
-		return
-	}
-	defer file.Close()
-
-	setObjectHeaders(w, obj)
-	w.WriteHeader(http.StatusOK)
+	h.serveObject(w, r, obj, h.S3CacheControl, mapAuthenticatedStorageReadError)
 }
 
 func (h *ObjectHandlers) DeleteObject(w http.ResponseWriter, r *http.Request) {

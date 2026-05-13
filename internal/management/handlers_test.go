@@ -5,8 +5,11 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -19,6 +22,9 @@ import (
 	httpapi "github.com/i-got-this-faa/fbs/internal/http"
 	"github.com/i-got-this-faa/fbs/internal/management"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
+	"github.com/i-got-this-faa/fbs/internal/publicread"
+	"github.com/i-got-this-faa/fbs/internal/s3"
+	"github.com/i-got-this-faa/fbs/internal/storage"
 )
 
 type managementTestEnv struct {
@@ -29,6 +35,7 @@ type managementTestEnv struct {
 	memberToken  string
 	memberUserID string
 	memberSigV4  auth.SigV4Credentials
+	storage      storage.DiskEngine
 }
 
 func TestManagementMetrics(t *testing.T) {
@@ -577,7 +584,127 @@ func TestManagementCORSPreflight(t *testing.T) {
 	}
 }
 
+func TestManagementPublicURLSigningDisabled(t *testing.T) {
+	t.Parallel()
+
+	env := newManagementTestEnv(t)
+	resp := env.do(t, http.MethodPost, "/api/management/buckets/photos/objects/2026/image.jpg/public-url", env.adminToken, strings.NewReader(`{}`))
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", resp.StatusCode)
+	}
+}
+
+func TestManagementPublicURLUsesPublicBaseURL(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Default()
+	cfg.PublicBaseURL = "https://cdn.example.com"
+	cfg.PublicReadSigningSecret = "12345678901234567890123456789012"
+	env := newManagementTestEnvWithConfig(t, cfg)
+
+	resp := env.do(t, http.MethodPost, "/api/management/buckets/photos/objects/2026/image.jpg/public-url", env.adminToken, strings.NewReader(`{"expires_in_seconds":3600}`))
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, readBody(t, resp))
+	}
+
+	var body struct {
+		URL          string `json:"url"`
+		ExpiresAt    string `json:"expires_at"`
+		CacheControl string `json:"cache_control"`
+	}
+	decodeResponse(t, resp, &body)
+	if !strings.HasPrefix(body.URL, "https://cdn.example.com/public/photos/2026/image.jpg?") {
+		t.Fatalf("url = %q, want public base URL", body.URL)
+	}
+	if body.ExpiresAt == "" {
+		t.Fatal("expected expires_at")
+	}
+	if body.CacheControl != "public, max-age=3600, must-revalidate" {
+		t.Fatalf("cache_control = %q, want max-age=3600", body.CacheControl)
+	}
+}
+
+func TestManagementPublicURLOmittedTTLUsesDefault(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Default()
+	cfg.PublicReadSigningSecret = "12345678901234567890123456789012"
+	cfg.PublicReadDefaultTTL = 2 * time.Hour
+	cfg.PublicReadMaxTTL = 3 * time.Hour
+	env := newManagementTestEnvWithConfig(t, cfg)
+
+	resp := env.do(t, http.MethodPost, "/api/management/buckets/photos/objects/2026/image.jpg/public-url", env.adminToken, strings.NewReader(`{}`))
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, readBody(t, resp))
+	}
+
+	var body struct {
+		CacheControl string `json:"cache_control"`
+	}
+	decodeResponse(t, resp, &body)
+	if body.CacheControl != "public, max-age=7200, must-revalidate" {
+		t.Fatalf("cache_control = %q, want default TTL", body.CacheControl)
+	}
+}
+
+func TestManagementPublicURLRejectsTTLGreaterThanMax(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Default()
+	cfg.PublicReadSigningSecret = "12345678901234567890123456789012"
+	cfg.PublicReadMaxTTL = time.Hour
+	env := newManagementTestEnvWithConfig(t, cfg)
+
+	resp := env.do(t, http.MethodPost, "/api/management/buckets/photos/objects/2026/image.jpg/public-url", env.adminToken, strings.NewReader(`{"expires_in_seconds":3601}`))
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", resp.StatusCode)
+	}
+}
+
+func TestManagementPublicURLWorksAgainstPublicRoute(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Default()
+	cfg.PublicReadSigningSecret = "12345678901234567890123456789012"
+	env := newManagementTestEnvWithConfig(t, cfg)
+	seedStoredObject(t, env, "photos", "cdn/file.txt", "cdn body")
+
+	resp := env.do(t, http.MethodPost, "/api/management/buckets/photos/objects/cdn/file.txt/public-url", env.adminToken, strings.NewReader(`{"expires_in_seconds":3600}`))
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, readBody(t, resp))
+	}
+
+	var body struct {
+		URL string `json:"url"`
+	}
+	decodeResponse(t, resp, &body)
+
+	publicURL, err := url.Parse(body.URL)
+	if err != nil {
+		t.Fatalf("parse URL: %v", err)
+	}
+	publicResp := env.do(t, http.MethodGet, publicURL.RequestURI(), "", nil)
+	defer publicResp.Body.Close()
+	if publicResp.StatusCode != http.StatusOK {
+		t.Fatalf("public status = %d, want 200; body=%s", publicResp.StatusCode, readBody(t, publicResp))
+	}
+	if string(readBody(t, publicResp)) != "cdn body" {
+		t.Fatalf("public body mismatch")
+	}
+}
+
 func newManagementTestEnv(t *testing.T) managementTestEnv {
+	t.Helper()
+	return newManagementTestEnvWithConfig(t, config.Default())
+}
+
+func newManagementTestEnvWithConfig(t *testing.T, cfg config.Config) managementTestEnv {
 	t.Helper()
 
 	db, err := metadata.Open(filepath.Join(t.TempDir(), "test.db"))
@@ -603,13 +730,18 @@ func newManagementTestEnv(t *testing.T) managementTestEnv {
 
 	bucketRepo := metadata.NewBucketRepository(db)
 	objectRepo := metadata.NewObjectRepository(db)
+	disk, err := storage.New(t.TempDir())
+	if err != nil {
+		t.Fatalf("new storage: %v", err)
+	}
 	handlers := &management.Handlers{
 		Management: metadata.NewManagementRepository(db),
 		Buckets:    bucketRepo,
 		Objects:    objectRepo,
 		Activity:   metadata.NewActivityRepository(db),
 		Users:      userRepo,
-		Config:     config.Default(),
+		Storage:    disk,
+		Config:     cfg,
 	}
 	authChain := &auth.ChainAuthenticator{
 		Authenticators: []auth.Authenticator{
@@ -617,9 +749,26 @@ func newManagementTestEnv(t *testing.T) managementTestEnv {
 		},
 	}
 
-	cfg := config.Default()
-	cfg.CORSAllowedOrigins = []string{"https://dashboard.example.com"}
-	router := httpapi.NewRouter(cfg, nil, func(r chi.Router) {
+	routerCfg := cfg
+	routerCfg.CORSAllowedOrigins = []string{"https://dashboard.example.com"}
+	var signer *publicread.Signer
+	if cfg.PublicReadSigningSecret != "" {
+		signer, err = publicread.NewSigner(cfg.PublicReadSigningSecret, nil)
+		if err != nil {
+			t.Fatalf("new public read signer: %v", err)
+		}
+	}
+	objectHandlers := &s3.ObjectHandlers{
+		Users:            userRepo,
+		Buckets:          bucketRepo,
+		Objects:          objectRepo,
+		Storage:          disk,
+		Logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+		S3CacheControl:   cfg.S3CacheControl,
+		PublicReadSigner: signer,
+	}
+	router := httpapi.NewRouter(routerCfg, nil, func(r chi.Router) {
+		s3.RegisterPublicReadRoutes(r, objectHandlers)
 		r.Route("/api/management", func(managementRoutes chi.Router) {
 			managementRoutes.Use(auth.RequireAuthentication(authChain, management.WriteAuthError))
 			managementRoutes.Use(auth.RequireRole("admin", management.WriteAuthError))
@@ -635,6 +784,7 @@ func newManagementTestEnv(t *testing.T) managementTestEnv {
 		memberToken:  memberToken.RawToken,
 		memberUserID: memberUser.ID,
 		memberSigV4:  memberSigV4,
+		storage:      disk,
 	}
 }
 
@@ -665,6 +815,31 @@ func seedManagementHandlerData(t *testing.T, ctx context.Context, db *sql.DB, ow
 		if err := objectRepo.Create(ctx, obj); err != nil {
 			t.Fatalf("create object: %v", err)
 		}
+	}
+}
+
+func seedStoredObject(t *testing.T, env managementTestEnv, bucketName, key, body string) {
+	t.Helper()
+
+	storagePath, size, err := env.storage.Write(context.Background(), bucketName, key, strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("write stored object: %v", err)
+	}
+
+	now := time.Date(2026, 5, 8, 12, 0, 0, 0, time.UTC)
+	object := &metadata.Object{
+		ID:          uuid.NewString(),
+		BucketName:  bucketName,
+		Key:         key,
+		Size:        size,
+		ETag:        "etag-cdn",
+		ContentType: "text/plain",
+		StoragePath: storagePath,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if err := metadata.NewObjectRepository(env.db).Create(context.Background(), object); err != nil {
+		t.Fatalf("create stored object metadata: %v", err)
 	}
 }
 
