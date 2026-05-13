@@ -29,13 +29,14 @@ const (
 )
 
 type Handlers struct {
-	Management metadata.ManagementRepository
-	Buckets    metadata.BucketRepository
-	Objects    metadata.ObjectRepository
-	Activity   metadata.ActivityRepository
-	Users      metadata.UserRepository
-	Storage    storage.DiskEngine
-	Config     config.Config
+	Management       metadata.ManagementRepository
+	Buckets          metadata.BucketRepository
+	Objects          metadata.ObjectRepository
+	Activity         metadata.ActivityRepository
+	Users            metadata.UserRepository
+	Storage          storage.DiskEngine
+	Config           config.Config
+	PublicReadSigner *publicread.Signer
 }
 
 func (h *Handlers) Metrics(w http.ResponseWriter, r *http.Request) {
@@ -208,7 +209,7 @@ func (h *Handlers) CreatePublicObjectURL(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if strings.TrimSpace(h.Config.PublicReadSigningSecret) == "" {
+	if h.PublicReadSigner == nil {
 		writeError(w, http.StatusServiceUnavailable, errorCodeInternal, "public read signing is not configured")
 		return
 	}
@@ -226,22 +227,12 @@ func (h *Handlers) CreatePublicObjectURL(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	signer, err := publicread.NewSigner(h.Config.PublicReadSigningSecret, nil)
-	if errors.Is(err, publicread.ErrSigningDisabled) {
-		writeError(w, http.StatusServiceUnavailable, errorCodeInternal, "public read signing is not configured")
-		return
-	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to create public URL")
-		return
-	}
-
 	expiresAt := time.Now().UTC().Add(ttl)
 	path := publicread.ObjectPath(bucketName, key)
 	expiresUnix := strconv.FormatInt(expiresAt.Unix(), 10)
 	query := url.Values{}
 	query.Set("expires", expiresUnix)
-	query.Set("signature", signer.SignPath(path, expiresAt))
+	query.Set("signature", h.PublicReadSigner.SignPath(path, expiresAt))
 
 	maxAge := int64(ttl / time.Second)
 	writeJSON(w, http.StatusOK, publicObjectURLResponse{

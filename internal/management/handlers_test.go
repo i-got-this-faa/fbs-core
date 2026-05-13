@@ -734,14 +734,22 @@ func newManagementTestEnvWithConfig(t *testing.T, cfg config.Config) managementT
 	if err != nil {
 		t.Fatalf("new storage: %v", err)
 	}
+	var signer *publicread.Signer
+	if cfg.PublicReadSigningSecret != "" {
+		signer, err = publicread.NewSigner(cfg.PublicReadSigningSecret, nil)
+		if err != nil {
+			t.Fatalf("new public read signer: %v", err)
+		}
+	}
 	handlers := &management.Handlers{
-		Management: metadata.NewManagementRepository(db),
-		Buckets:    bucketRepo,
-		Objects:    objectRepo,
-		Activity:   metadata.NewActivityRepository(db),
-		Users:      userRepo,
-		Storage:    disk,
-		Config:     cfg,
+		Management:       metadata.NewManagementRepository(db),
+		Buckets:          bucketRepo,
+		Objects:          objectRepo,
+		Activity:         metadata.NewActivityRepository(db),
+		Users:            userRepo,
+		Storage:          disk,
+		Config:           cfg,
+		PublicReadSigner: signer,
 	}
 	authChain := &auth.ChainAuthenticator{
 		Authenticators: []auth.Authenticator{
@@ -751,13 +759,6 @@ func newManagementTestEnvWithConfig(t *testing.T, cfg config.Config) managementT
 
 	routerCfg := cfg
 	routerCfg.CORSAllowedOrigins = []string{"https://dashboard.example.com"}
-	var signer *publicread.Signer
-	if cfg.PublicReadSigningSecret != "" {
-		signer, err = publicread.NewSigner(cfg.PublicReadSigningSecret, nil)
-		if err != nil {
-			t.Fatalf("new public read signer: %v", err)
-		}
-	}
 	objectHandlers := &s3.ObjectHandlers{
 		Users:            userRepo,
 		Buckets:          bucketRepo,

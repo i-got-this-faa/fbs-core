@@ -94,13 +94,14 @@ func main() {
 	}
 
 	managementHandlers := &management.Handlers{
-		Management: metadata.NewManagementRepository(db),
-		Buckets:    bucketRepo,
-		Objects:    objectRepo,
-		Activity:   metadata.NewActivityRepository(db),
-		Users:      userRepo,
-		Storage:    storageEngine,
-		Config:     cfg,
+		Management:       metadata.NewManagementRepository(db),
+		Buckets:          bucketRepo,
+		Objects:          objectRepo,
+		Activity:         metadata.NewActivityRepository(db),
+		Users:            userRepo,
+		Storage:          storageEngine,
+		Config:           cfg,
+		PublicReadSigner: publicReadSigner,
 	}
 	objectHandlers := &s3.ObjectHandlers{
 		Users:            userRepo,
