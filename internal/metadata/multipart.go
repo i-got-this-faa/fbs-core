@@ -53,6 +53,10 @@ func (r *sqliteMultipartUploadRepository) Create(ctx context.Context, upload *Mu
 		INSERT INTO multipart_uploads (id, bucket_name, key, created_at)
 		VALUES (?, ?, ?, ?)`
 
+	if upload.CreatedAt.IsZero() {
+		upload.CreatedAt = time.Now().UTC()
+	}
+
 	_, err := r.db.ExecContext(ctx, q,
 		upload.ID,
 		upload.BucketName,
