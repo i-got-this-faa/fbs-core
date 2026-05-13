@@ -21,6 +21,9 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.DevMode {
 		t.Error("expected DevMode to be false by default")
 	}
+	if cfg.MetadataCacheSizeBytes != 512*1024*1024 {
+		t.Errorf("MetadataCacheSizeBytes = %d, want 512MiB", cfg.MetadataCacheSizeBytes)
+	}
 }
 
 func TestConfigValidate_DevModeRequiresLoopback(t *testing.T) {
@@ -272,6 +275,64 @@ func TestDurationFromEnv(t *testing.T) {
 	_, err = durationFromEnv("TEST_DURATION_INVALID", 10*time.Second)
 	if err == nil {
 		t.Error("expected error for invalid duration")
+	}
+}
+
+func TestParseByteSize(t *testing.T) {
+	cases := []struct {
+		input string
+		want  int64
+	}{
+		{"512MiB", 512 * 1024 * 1024},
+		{"64MB", 64 * 1000 * 1000},
+		{"12345", 12345},
+	}
+
+	for _, tc := range cases {
+		got, err := parseByteSize(tc.input)
+		if err != nil {
+			t.Fatalf("parseByteSize(%q) error = %v", tc.input, err)
+		}
+		if got != tc.want {
+			t.Fatalf("parseByteSize(%q) = %d, want %d", tc.input, got, tc.want)
+		}
+	}
+}
+
+func TestParseByteSizeInvalid(t *testing.T) {
+	for _, input := range []string{"", "nope", "-1", "10Mi", "1.5MiB"} {
+		if _, err := parseByteSize(input); err == nil {
+			t.Fatalf("parseByteSize(%q) expected error", input)
+		}
+	}
+}
+
+func TestConfigValidation_PublicReadSigningSecretLength(t *testing.T) {
+	cfg := Default()
+	cfg.PublicReadSigningSecret = "too-short"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error for short public read signing secret")
+	}
+}
+
+func TestConfigValidation_PublicReadTTLs(t *testing.T) {
+	cfg := Default()
+	cfg.PublicReadDefaultTTL = 0
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error for zero default TTL")
+	}
+
+	cfg = Default()
+	cfg.PublicReadMaxTTL = 0
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error for zero max TTL")
+	}
+
+	cfg = Default()
+	cfg.PublicReadDefaultTTL = 25 * time.Hour
+	cfg.PublicReadMaxTTL = 24 * time.Hour
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected error when default TTL exceeds max TTL")
 	}
 }
 

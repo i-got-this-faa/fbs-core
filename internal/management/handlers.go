@@ -3,9 +3,12 @@ package management
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -13,6 +16,7 @@ import (
 	"github.com/i-got-this-faa/fbs/internal/config"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
 	"github.com/i-got-this-faa/fbs/internal/objectops"
+	"github.com/i-got-this-faa/fbs/internal/publicread"
 	"github.com/i-got-this-faa/fbs/internal/s3compat"
 	"github.com/i-got-this-faa/fbs/internal/storage"
 )
@@ -25,13 +29,14 @@ const (
 )
 
 type Handlers struct {
-	Management metadata.ManagementRepository
-	Buckets    metadata.BucketRepository
-	Objects    metadata.ObjectRepository
-	Activity   metadata.ActivityRepository
-	Users      metadata.UserRepository
-	Storage    storage.DiskEngine
-	Config     config.Config
+	Management       metadata.ManagementRepository
+	Buckets          metadata.BucketRepository
+	Objects          metadata.ObjectRepository
+	Activity         metadata.ActivityRepository
+	Users            metadata.UserRepository
+	Storage          storage.DiskEngine
+	Config           config.Config
+	PublicReadSigner *publicread.Signer
 }
 
 func (h *Handlers) Metrics(w http.ResponseWriter, r *http.Request) {
@@ -192,6 +197,51 @@ func (h *Handlers) GetObject(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, objectDetailResponse{Object: objectDetailDTO(*obj)})
 }
 
+func (h *Handlers) CreatePublicObjectURL(w http.ResponseWriter, r *http.Request) {
+	bucketName := strings.TrimSpace(chi.URLParam(r, "bucket"))
+	if !h.ensureBucket(w, r, bucketName) {
+		return
+	}
+
+	key, ok := publicURLObjectKey(r)
+	if !ok {
+		writeError(w, http.StatusNotFound, errorCodeNotFound, "object not found")
+		return
+	}
+
+	if h.PublicReadSigner == nil {
+		writeError(w, http.StatusServiceUnavailable, errorCodeInternal, "public read signing is not configured")
+		return
+	}
+
+	ttl, ok := h.publicReadTTL(w, r)
+	if !ok {
+		return
+	}
+
+	if _, err := h.Objects.GetByKey(r.Context(), bucketName, key); errors.Is(err, metadata.ErrObjectNotFound) {
+		writeError(w, http.StatusNotFound, errorCodeNotFound, "object not found")
+		return
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to load object")
+		return
+	}
+
+	expiresAt := time.Now().UTC().Add(ttl)
+	path := publicread.ObjectPath(bucketName, key)
+	expiresUnix := strconv.FormatInt(expiresAt.Unix(), 10)
+	query := url.Values{}
+	query.Set("expires", expiresUnix)
+	query.Set("signature", h.PublicReadSigner.SignPath(path, expiresAt))
+
+	maxAge := int64(ttl / time.Second)
+	writeJSON(w, http.StatusOK, publicObjectURLResponse{
+		URL:          strings.TrimRight(h.publicBaseURL(r), "/") + path + "?" + query.Encode(),
+		ExpiresAt:    formatTime(expiresAt),
+		CacheControl: "public, max-age=" + strconv.FormatInt(maxAge, 10) + ", must-revalidate",
+	})
+}
+
 func (h *Handlers) ListKeys(w http.ResponseWriter, r *http.Request) {
 	users, err := h.Users.List(r.Context())
 	if err != nil {
@@ -205,6 +255,56 @@ func (h *Handlers) ListKeys(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, keysResponse{Keys: keys})
+}
+
+func publicURLObjectKey(r *http.Request) (string, bool) {
+	rawPath := strings.TrimPrefix(chi.URLParam(r, "*"), "/")
+	key, ok := strings.CutSuffix(rawPath, "/public-url")
+	if !ok || key == "" {
+		return "", false
+	}
+	return key, true
+}
+
+func (h *Handlers) publicReadTTL(w http.ResponseWriter, r *http.Request) (time.Duration, bool) {
+	req := publicObjectURLRequest{}
+	if r.Body != nil {
+		decoder := json.NewDecoder(r.Body)
+		if err := decoder.Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+			writeError(w, http.StatusBadRequest, errorCodeInvalidRequest, "invalid JSON body")
+			return 0, false
+		}
+	}
+
+	ttl := h.Config.PublicReadDefaultTTL
+	if req.ExpiresInSeconds != nil {
+		if *req.ExpiresInSeconds <= 0 {
+			writeError(w, http.StatusBadRequest, errorCodeInvalidRequest, "expires_in_seconds must be positive")
+			return 0, false
+		}
+		ttl = time.Duration(*req.ExpiresInSeconds) * time.Second
+	}
+	if ttl <= 0 || ttl > h.Config.PublicReadMaxTTL {
+		writeError(w, http.StatusBadRequest, errorCodeInvalidRequest, "expires_in_seconds exceeds maximum TTL")
+		return 0, false
+	}
+
+	return ttl, true
+}
+
+func (h *Handlers) publicBaseURL(r *http.Request) string {
+	if h.Config.PublicBaseURL != "" {
+		return h.Config.PublicBaseURL
+	}
+
+	scheme := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto"))
+	if scheme == "" {
+		scheme = "http"
+		if r.TLS != nil {
+			scheme = "https"
+		}
+	}
+	return scheme + "://" + r.Host
 }
 
 func (h *Handlers) CreateKey(w http.ResponseWriter, r *http.Request) {

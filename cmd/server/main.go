@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/go-chi/chi/v5"
@@ -17,6 +18,7 @@ import (
 	httpapi "github.com/i-got-this-faa/fbs/internal/http"
 	"github.com/i-got-this-faa/fbs/internal/management"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
+	"github.com/i-got-this-faa/fbs/internal/publicread"
 	"github.com/i-got-this-faa/fbs/internal/s3"
 	"github.com/i-got-this-faa/fbs/internal/server"
 	"github.com/i-got-this-faa/fbs/internal/storage"
@@ -45,9 +47,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	objectRepo := metadata.NewObjectRepository(db)
+	rawObjectRepo := metadata.NewObjectRepository(db)
 	if err := storageEngine.Reconcile(context.Background(), func(bucketName string) ([]string, error) {
-		return listKnownStoragePaths(context.Background(), objectRepo, bucketName)
+		return listKnownStoragePaths(context.Background(), rawObjectRepo, bucketName)
 	}); err != nil {
 		logger.Error("failed to reconcile storage engine", "error", err)
 		os.Exit(1)
@@ -74,26 +76,47 @@ func main() {
 	managementAuthenticators = append(managementAuthenticators, &auth.BearerAuthenticator{Repo: userRepo})
 	managementAuthChain := &auth.ChainAuthenticator{Authenticators: managementAuthenticators}
 
-	bucketRepo := metadata.NewBucketRepository(db)
+	rawBucketRepo := metadata.NewBucketRepository(db)
+	bucketRepo := rawBucketRepo
+	objectRepo := rawObjectRepo
+	if cfg.MetadataCacheSizeBytes > 0 {
+		cache := metadata.NewMetadataCache(cfg.MetadataCacheSizeBytes)
+		bucketRepo = metadata.NewCachedBucketRepository(rawBucketRepo, cache)
+		objectRepo = metadata.NewCachedObjectRepository(rawObjectRepo, cache)
+	}
+
+	var publicReadSigner *publicread.Signer
+	if strings.TrimSpace(cfg.PublicReadSigningSecret) != "" {
+		publicReadSigner, err = publicread.NewSigner(cfg.PublicReadSigningSecret, nil)
+		if err != nil {
+			logger.Error("failed to initialize public read signer", "error", err)
+			os.Exit(1)
+		}
+	}
+
 	managementHandlers := &management.Handlers{
-		Management: metadata.NewManagementRepository(db),
-		Buckets:    bucketRepo,
-		Objects:    objectRepo,
-		Activity:   metadata.NewActivityRepository(db),
-		Users:      userRepo,
-		Storage:    storageEngine,
-		Config:     cfg,
+		Management:       metadata.NewManagementRepository(db),
+		Buckets:          bucketRepo,
+		Objects:          objectRepo,
+		Activity:         metadata.NewActivityRepository(db),
+		Users:            userRepo,
+		Storage:          storageEngine,
+		Config:           cfg,
+		PublicReadSigner: publicReadSigner,
 	}
 	objectHandlers := &s3.ObjectHandlers{
-		Users:    userRepo,
-		Buckets:  bucketRepo,
-		Objects:  objectRepo,
-		Activity: metadata.NewActivityRepository(db),
-		Storage:  storageEngine,
-		Logger:   logger,
+		Users:            userRepo,
+		Buckets:          bucketRepo,
+		Objects:          objectRepo,
+		Activity:         metadata.NewActivityRepository(db),
+		Storage:          storageEngine,
+		Logger:           logger,
+		S3CacheControl:   cfg.S3CacheControl,
+		PublicReadSigner: publicReadSigner,
 	}
 
 	router := httpapi.NewRouter(cfg, logger, func(r chi.Router) {
+		s3.RegisterPublicReadRoutes(r, objectHandlers)
 		r.Route("/api/management", func(managementRoutes chi.Router) {
 			managementRoutes.Use(auth.RequireAuthentication(managementAuthChain, management.WriteAuthError))
 			managementRoutes.Use(auth.RequireRole("admin", management.WriteAuthError))
@@ -102,7 +125,11 @@ func main() {
 		r.Group(func(s3Routes chi.Router) {
 			s3Routes.Use(auth.RequireAuthentication(authChain, writeS3AuthError))
 			s3.RegisterBucketRoutes(s3Routes, objectHandlers)
-			s3.RegisterObjectRoutes(s3Routes, objectHandlers)
+			s3.RegisterObjectReadRoutes(s3Routes, objectHandlers)
+		})
+		r.Group(func(s3Routes chi.Router) {
+			s3Routes.Use(auth.RequireAuthentication(authChain, writeS3AuthError))
+			s3.RegisterObjectMutationRoutes(s3Routes, objectHandlers)
 		})
 		// registerExtraRoutes is a no-op unless built with -tags testendpoints,
 		// which compiles in the /_health/auth debug endpoint.

@@ -36,6 +36,8 @@ type responseRecorder struct {
 	bytes  int
 }
 
+var _ io.ReaderFrom = (*responseRecorder)(nil)
+
 func (r *responseRecorder) WriteHeader(statusCode int) {
 	r.status = statusCode
 	r.ResponseWriter.WriteHeader(statusCode)

@@ -65,7 +65,7 @@ func (h *ObjectHandlers) CopyObject(w http.ResponseWriter, r *http.Request) {
 
 	sourceFile, err := h.Storage.Open(r.Context(), sourceObject.StoragePath)
 	if err != nil {
-		mapStorageReadError(w, r, h, err, sourceObject)
+		mapAuthenticatedStorageReadError(w, r, h, err, sourceObject)
 		return
 	}
 	defer sourceFile.Close()

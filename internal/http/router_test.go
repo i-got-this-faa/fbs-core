@@ -79,6 +79,28 @@ func TestCORSPreflight(t *testing.T) {
 	}
 }
 
+func TestRouterPreservesReaderFrom(t *testing.T) {
+	t.Parallel()
+
+	router := NewRouter(testConfig(), testLogger(), func(r chi.Router) {
+		r.Get("/reader-from", func(w http.ResponseWriter, _ *http.Request) {
+			if _, ok := w.(io.ReaderFrom); !ok {
+				http.Error(w, "missing ReaderFrom", http.StatusInternalServerError)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+		})
+	})
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/reader-from", nil)
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204; body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestRecoveryMiddleware(t *testing.T) {
 	t.Parallel()
 
@@ -456,9 +478,9 @@ func (f *failingUserRepo) GetByAccessKeyID(_ context.Context, _ string) (*metada
 func (f *failingUserRepo) GetBySigV4AccessKeyID(_ context.Context, _ string) (*metadata.User, error) {
 	return nil, errors.New("database connection lost")
 }
-func (f *failingUserRepo) List(_ context.Context) ([]metadata.User, error)        { return nil, nil }
-func (f *failingUserRepo) Update(_ context.Context, _ *metadata.User) error       { return nil }
-func (f *failingUserRepo) Delete(_ context.Context, _ string) error               { return nil }
+func (f *failingUserRepo) List(_ context.Context) ([]metadata.User, error)  { return nil, nil }
+func (f *failingUserRepo) Update(_ context.Context, _ *metadata.User) error { return nil }
+func (f *failingUserRepo) Delete(_ context.Context, _ string) error         { return nil }
 
 func testConfig() config.Config {
 	cfg := config.Default()
