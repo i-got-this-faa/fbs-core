@@ -155,6 +155,38 @@ func TestOpenNotFound(t *testing.T) {
 	}
 }
 
+func TestWritePartSanitizesUploadID(t *testing.T) {
+	t.Parallel()
+	eng, err := New(t.TempDir())
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	invalidIDs := []string{"", "a/b", "a\\b", "..", "a/../b", "a\x00b", "a\nb"}
+	for _, id := range invalidIDs {
+		_, _, err := eng.WritePart(context.Background(), id, 1, strings.NewReader("data"))
+		if err == nil {
+			t.Fatalf("WritePart(%q) error = nil, want error", id)
+		}
+	}
+}
+
+func TestDeleteUploadPartsSanitizesUploadID(t *testing.T) {
+	t.Parallel()
+	eng, err := New(t.TempDir())
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	invalidIDs := []string{"", "a/b", "a\\b", "..", "a/../b", "a\x00b"}
+	for _, id := range invalidIDs {
+		err := eng.DeleteUploadParts(context.Background(), id)
+		if err == nil {
+			t.Fatalf("DeleteUploadParts(%q) error = nil, want error", id)
+		}
+	}
+}
+
 type failingReader struct {
 	reads     int
 	failAfter int

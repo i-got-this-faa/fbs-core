@@ -110,6 +110,25 @@ func isWithinBase(base, target string) bool {
 	return true
 }
 
+func validateUploadID(uploadID string) error {
+	if strings.TrimSpace(uploadID) == "" {
+		return ErrInvalidKey
+	}
+	if strings.ContainsAny(uploadID, "/\\") {
+		return ErrInvalidKey
+	}
+	if strings.Contains(uploadID, "\x00") || strings.Contains(uploadID, "\n") || strings.Contains(uploadID, "\r") {
+		return ErrInvalidKey
+	}
+	if containsTraversalSegment(uploadID) {
+		return ErrPathTraversal
+	}
+	if !utf8.ValidString(uploadID) {
+		return ErrInvalidKey
+	}
+	return nil
+}
+
 func containsTraversalSegment(key string) bool {
 	normalized := strings.ReplaceAll(key, "\\", "/")
 	for _, part := range strings.Split(normalized, "/") {

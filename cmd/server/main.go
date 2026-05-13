@@ -48,11 +48,30 @@ func main() {
 		os.Exit(1)
 	}
 
+<<<<<<< Updated upstream
 	rawObjectRepo := metadata.NewObjectRepository(db)
+=======
+	objectRepo := metadata.NewObjectRepository(db)
+	multipartRepo := metadata.NewMultipartUploadRepository(db)
+>>>>>>> Stashed changes
 	if err := storageEngine.Reconcile(context.Background(), func(bucketName string) ([]string, error) {
 		return listKnownStoragePaths(context.Background(), rawObjectRepo, bucketName)
 	}); err != nil {
 		logger.Error("failed to reconcile storage engine", "error", err)
+		os.Exit(1)
+	}
+	if err := storageEngine.ReconcileMultipartTmp(context.Background(), func() (map[string]struct{}, error) {
+		ids, err := multipartRepo.ListAllUploadIDs(context.Background())
+		if err != nil {
+			return nil, err
+		}
+		m := make(map[string]struct{}, len(ids))
+		for _, id := range ids {
+			m[id] = struct{}{}
+		}
+		return m, nil
+	}); err != nil {
+		logger.Error("failed to reconcile multipart tmp", "error", err)
 		os.Exit(1)
 	}
 
@@ -111,6 +130,7 @@ func main() {
 		Users:            userRepo,
 		Buckets:          bucketRepo,
 		Objects:          objectRepo,
+<<<<<<< Updated upstream
 		Activity:         metadata.NewActivityRepository(db),
 		Storage:          storageEngine,
 		Logger:           logger,
@@ -129,7 +149,16 @@ func main() {
 	}
 	if userCount == 0 {
 		logger.Info("first start setup required", "setup_url", startupSetupURL(cfg))
+=======
+		MultipartUploads: multipartRepo,
+		Storage:          storageEngine,
+		Logger:           logger,
+>>>>>>> Stashed changes
 	}
+
+	cleanupCtx, cleanupCancel := context.WithCancel(context.Background())
+	defer cleanupCancel()
+	go s3.StaleMultipartCleanup(cleanupCtx, multipartRepo, storageEngine, cfg.MultipartTTL, cfg.MultipartCleanupInterval, logger)
 
 	router := httpapi.NewRouter(cfg, logger, func(r chi.Router) {
 		s3.RegisterPublicReadRoutes(r, objectHandlers)

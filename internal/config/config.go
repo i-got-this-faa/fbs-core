@@ -13,6 +13,7 @@ import (
 )
 
 const (
+<<<<<<< Updated upstream
 	defaultHTTPAddr         = "127.0.0.1:9000"
 	defaultDBPath           = "./fbs.db"
 	defaultDataDir          = "./data"
@@ -24,6 +25,17 @@ const (
 	defaultWriteTimeout     = 30 * time.Second
 	defaultIdleTimeout      = 60 * time.Second
 	defaultShutdownTimeout  = 10 * time.Second
+=======
+	defaultHTTPAddr                 = "127.0.0.1:9000"
+	defaultDBPath                   = "./fbs.db"
+	defaultDataDir                  = "./data"
+	defaultReadTimeout              = 15 * time.Second
+	defaultWriteTimeout             = 30 * time.Second
+	defaultIdleTimeout              = 60 * time.Second
+	defaultShutdownTimeout          = 10 * time.Second
+	defaultMultipartTTL             = 24 * time.Hour
+	defaultMultipartCleanupInterval = 1 * time.Hour
+>>>>>>> Stashed changes
 )
 
 var defaultCORSAllowedOrigins = []string{
@@ -34,6 +46,7 @@ var defaultCORSAllowedOrigins = []string{
 }
 
 type Config struct {
+<<<<<<< Updated upstream
 	HTTPAddr                string
 	DBPath                  string
 	DataDir                 string
@@ -49,10 +62,25 @@ type Config struct {
 	WriteTimeout            time.Duration
 	IdleTimeout             time.Duration
 	ShutdownTimeout         time.Duration
+=======
+	HTTPAddr                 string
+	DBPath                   string
+	DataDir                  string
+	DevMode                  bool
+	PublicBaseURL            string
+	CORSAllowedOrigins       []string
+	ReadTimeout              time.Duration
+	WriteTimeout             time.Duration
+	IdleTimeout              time.Duration
+	ShutdownTimeout          time.Duration
+	MultipartTTL             time.Duration
+	MultipartCleanupInterval time.Duration
+>>>>>>> Stashed changes
 }
 
 func Default() Config {
 	return Config{
+<<<<<<< Updated upstream
 		HTTPAddr:               defaultHTTPAddr,
 		DBPath:                 defaultDBPath,
 		DataDir:                defaultDataDir,
@@ -65,6 +93,18 @@ func Default() Config {
 		WriteTimeout:           defaultWriteTimeout,
 		IdleTimeout:            defaultIdleTimeout,
 		ShutdownTimeout:        defaultShutdownTimeout,
+=======
+		HTTPAddr:                 defaultHTTPAddr,
+		DBPath:                   defaultDBPath,
+		DataDir:                  defaultDataDir,
+		CORSAllowedOrigins:       append([]string(nil), defaultCORSAllowedOrigins...),
+		ReadTimeout:              defaultReadTimeout,
+		WriteTimeout:             defaultWriteTimeout,
+		IdleTimeout:              defaultIdleTimeout,
+		ShutdownTimeout:          defaultShutdownTimeout,
+		MultipartTTL:             defaultMultipartTTL,
+		MultipartCleanupInterval: defaultMultipartCleanupInterval,
+>>>>>>> Stashed changes
 	}
 }
 
@@ -91,17 +131,25 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
+<<<<<<< Updated upstream
 	metadataCacheSize, err := byteSizeFromEnv("FBS_METADATA_CACHE_SIZE", defaults.MetadataCacheSizeBytes)
+=======
+	multipartTTL, err := durationFromEnv("FBS_MULTIPART_TTL", defaults.MultipartTTL)
+>>>>>>> Stashed changes
 	if err != nil {
 		return Config{}, err
 	}
 
+<<<<<<< Updated upstream
 	publicReadDefaultTTL, err := durationFromEnv("FBS_PUBLIC_READ_DEFAULT_TTL", defaults.PublicReadDefaultTTL)
 	if err != nil {
 		return Config{}, err
 	}
 
 	publicReadMaxTTL, err := durationFromEnv("FBS_PUBLIC_READ_MAX_TTL", defaults.PublicReadMaxTTL)
+=======
+	multipartCleanupInterval, err := durationFromEnv("FBS_MULTIPART_CLEANUP_INTERVAL", defaults.MultipartCleanupInterval)
+>>>>>>> Stashed changes
 	if err != nil {
 		return Config{}, err
 	}
@@ -130,6 +178,8 @@ func Load() (Config, error) {
 	flagSet.DurationVar(&writeTimeout, "write-timeout", writeTimeout, "HTTP write timeout")
 	flagSet.DurationVar(&idleTimeout, "idle-timeout", idleTimeout, "HTTP idle timeout")
 	flagSet.DurationVar(&shutdownTimeout, "shutdown-timeout", shutdownTimeout, "HTTP shutdown timeout")
+	flagSet.DurationVar(&multipartTTL, "multipart-ttl", multipartTTL, "Multipart upload TTL before stale cleanup")
+	flagSet.DurationVar(&multipartCleanupInterval, "multipart-cleanup-interval", multipartCleanupInterval, "Interval between stale multipart upload cleanups")
 
 	if err := flagSet.Parse(os.Args[1:]); err != nil {
 		return Config{}, err
@@ -141,6 +191,7 @@ func Load() (Config, error) {
 	}
 
 	cfg := Config{
+<<<<<<< Updated upstream
 		HTTPAddr:                strings.TrimSpace(*httpAddr),
 		DBPath:                  strings.TrimSpace(*dbPath),
 		DataDir:                 strings.TrimSpace(*dataDir),
@@ -156,6 +207,20 @@ func Load() (Config, error) {
 		WriteTimeout:            writeTimeout,
 		IdleTimeout:             idleTimeout,
 		ShutdownTimeout:         shutdownTimeout,
+=======
+		HTTPAddr:                 strings.TrimSpace(*httpAddr),
+		DBPath:                   strings.TrimSpace(*dbPath),
+		DataDir:                  strings.TrimSpace(*dataDir),
+		DevMode:                  *devModeFlag,
+		PublicBaseURL:            strings.TrimSpace(*publicBaseURL),
+		CORSAllowedOrigins:       splitCSV(*corsAllowedOrigins),
+		ReadTimeout:              readTimeout,
+		WriteTimeout:             writeTimeout,
+		IdleTimeout:              idleTimeout,
+		ShutdownTimeout:          shutdownTimeout,
+		MultipartTTL:             multipartTTL,
+		MultipartCleanupInterval: multipartCleanupInterval,
+>>>>>>> Stashed changes
 	}
 
 	if err := cfg.Validate(); err != nil {
@@ -205,6 +270,18 @@ func (c Config) Validate() error {
 
 	if c.ReadTimeout <= 0 || c.WriteTimeout <= 0 || c.IdleTimeout <= 0 || c.ShutdownTimeout <= 0 {
 		return fmt.Errorf("timeouts must be greater than zero")
+	}
+
+	if c.MultipartTTL <= 0 {
+		return fmt.Errorf("multipart TTL must be greater than zero")
+	}
+
+	if c.MultipartCleanupInterval <= 0 {
+		return fmt.Errorf("multipart cleanup interval must be greater than zero")
+	}
+	const minCleanupInterval = 1 * time.Minute
+	if c.MultipartCleanupInterval < minCleanupInterval {
+		return fmt.Errorf("multipart cleanup interval must be at least %s", minCleanupInterval)
 	}
 
 	if c.DevMode {

@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -18,13 +19,55 @@ type ObjectHandlers struct {
 	Users            metadata.UserRepository
 	Buckets          metadata.BucketRepository
 	Objects          metadata.ObjectRepository
+<<<<<<< Updated upstream
 	Activity         metadata.ActivityRepository
+=======
+	MultipartUploads metadata.MultipartUploadRepository
+>>>>>>> Stashed changes
 	Storage          storage.DiskEngine
 	Now              func() time.Time
 	NewID            func() string
 	Logger           *slog.Logger
+<<<<<<< Updated upstream
 	S3CacheControl   string
 	PublicReadSigner *publicread.Signer
+=======
+	MinPartSize      int64 // zero means default 5 MiB
+
+	uploadLocksMu sync.Mutex
+	uploadLocks   map[string]*uploadLock
+}
+
+type uploadLock struct {
+	mu   sync.Mutex
+	refs int
+}
+
+func (h *ObjectHandlers) acquireUploadLock(uploadID string) func() {
+	h.uploadLocksMu.Lock()
+	if h.uploadLocks == nil {
+		h.uploadLocks = make(map[string]*uploadLock)
+	}
+	lock := h.uploadLocks[uploadID]
+	if lock == nil {
+		lock = &uploadLock{}
+		h.uploadLocks[uploadID] = lock
+	}
+	lock.refs++
+	h.uploadLocksMu.Unlock()
+
+	lock.mu.Lock()
+	return func() {
+		lock.mu.Unlock()
+
+		h.uploadLocksMu.Lock()
+		lock.refs--
+		if lock.refs == 0 && h.uploadLocks[uploadID] == lock {
+			delete(h.uploadLocks, uploadID)
+		}
+		h.uploadLocksMu.Unlock()
+	}
+>>>>>>> Stashed changes
 }
 
 func (h *ObjectHandlers) PutObject(w http.ResponseWriter, r *http.Request) {
@@ -44,6 +87,16 @@ func (h *ObjectHandlers) PutObject(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		WriteS3Error(w, r, http.StatusBadRequest, codeInvalidRequest, messageInvalidRequest)
+		return
+	}
+
+	// Load the existing object before writing so we know whether this is an
+	// overwrite. Write always creates a new unique UUID path, so the old file
+	// is untouched until metadata commit succeeds.
+	oldObj, err := h.Objects.GetByKey(r.Context(), bucketName, key)
+	if err != nil && !errors.Is(err, metadata.ErrObjectNotFound) {
+		h.logError("load existing object before put", err, bucketName, key, "")
+		WriteS3Error(w, r, http.StatusInternalServerError, codeInternalError, messageInternalError)
 		return
 	}
 
@@ -76,12 +129,22 @@ func (h *ObjectHandlers) PutObject(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
+
 	if err := h.Objects.Create(r.Context(), obj); err != nil {
 		h.logError("create object metadata", err, bucketName, key, storagePath)
+		// Write always creates a new unique file, so on metadata failure we must
+		// clean it up regardless of whether this is an overwrite.
+		_ = h.Storage.Delete(r.Context(), storagePath)
 		WriteS3Error(w, r, http.StatusInternalServerError, codeInternalError, messageInternalError)
 		return
 	}
 	h.recordActivity(r, "put_object", bucketName, key, size, obj.ETag)
+
+	if oldObj != nil && oldObj.StoragePath != storagePath {
+		if err := h.Storage.Delete(r.Context(), oldObj.StoragePath); err != nil {
+			h.logError("delete old object backing file after put", err, bucketName, key, oldObj.StoragePath)
+		}
+	}
 
 	w.Header().Set("ETag", quoteETag(obj.ETag))
 	w.WriteHeader(http.StatusOK)

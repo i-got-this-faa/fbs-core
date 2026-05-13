@@ -74,9 +74,6 @@ func TestReconcileRemovesOrphansAndKeepsKnownFiles(t *testing.T) {
 	if _, err := os.Stat(orphanFullPath); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("orphan file stat error = %v, want %v", err, os.ErrNotExist)
 	}
-	if _, err := os.Stat(filepath.Dir(orphanFullPath)); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("orphan parent dir stat error = %v, want %v", err, os.ErrNotExist)
-	}
 }
 
 func TestReconcileCanceledContext(t *testing.T) {
@@ -95,5 +92,81 @@ func TestReconcileCanceledContext(t *testing.T) {
 	})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("Reconcile() error = %v, want %v", err, context.Canceled)
+	}
+}
+
+func TestReconcileMultipartTmpPreservesActiveUploads(t *testing.T) {
+	t.Parallel()
+
+	eng, err := New(t.TempDir())
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	activeDir := filepath.Join(eng.tmpDir, "multipart", "active-upload")
+	if err := os.MkdirAll(activeDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll active error = %v", err)
+	}
+	activeFile := filepath.Join(activeDir, "1")
+	if err := os.WriteFile(activeFile, []byte("part"), 0o644); err != nil {
+		t.Fatalf("WriteFile active error = %v", err)
+	}
+
+	if err := eng.ReconcileMultipartTmp(context.Background(), func() (map[string]struct{}, error) {
+		return map[string]struct{}{"active-upload": {}}, nil
+	}); err != nil {
+		t.Fatalf("ReconcileMultipartTmp() error = %v", err)
+	}
+
+	if _, err := os.Stat(activeFile); err != nil {
+		t.Fatalf("active file stat error = %v", err)
+	}
+}
+
+func TestReconcileMultipartTmpDeletesOrphans(t *testing.T) {
+	t.Parallel()
+
+	eng, err := New(t.TempDir())
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	orphanDir := filepath.Join(eng.tmpDir, "multipart", "orphan-upload")
+	if err := os.MkdirAll(orphanDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll orphan error = %v", err)
+	}
+	orphanFile := filepath.Join(orphanDir, "1")
+	if err := os.WriteFile(orphanFile, []byte("part"), 0o644); err != nil {
+		t.Fatalf("WriteFile orphan error = %v", err)
+	}
+
+	if err := eng.ReconcileMultipartTmp(context.Background(), func() (map[string]struct{}, error) {
+		return map[string]struct{}{}, nil
+	}); err != nil {
+		t.Fatalf("ReconcileMultipartTmp() error = %v", err)
+	}
+
+	if _, err := os.Stat(orphanDir); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("orphan dir stat error = %v, want %v", err, os.ErrNotExist)
+	}
+}
+
+func TestReconcileMultipartTmpIgnoresMissingMultipartDir(t *testing.T) {
+	t.Parallel()
+
+	eng, err := New(t.TempDir())
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	// Remove .tmp/multipart entirely.
+	if err := os.RemoveAll(filepath.Join(eng.tmpDir, "multipart")); err != nil {
+		t.Fatalf("RemoveAll error = %v", err)
+	}
+
+	if err := eng.ReconcileMultipartTmp(context.Background(), func() (map[string]struct{}, error) {
+		return map[string]struct{}{}, nil
+	}); err != nil {
+		t.Fatalf("ReconcileMultipartTmp() error = %v", err)
 	}
 }

@@ -30,6 +30,7 @@ import (
 )
 
 type objectTestEnv struct {
+<<<<<<< Updated upstream
 	router  http.Handler
 	users   metadata.UserRepository
 	buckets metadata.BucketRepository
@@ -41,6 +42,17 @@ type objectTestEnv struct {
 	dataDir string
 	userID  string
 	now     time.Time
+=======
+	router           http.Handler
+	users            metadata.UserRepository
+	buckets          metadata.BucketRepository
+	objects          metadata.ObjectRepository
+	multipartUploads metadata.MultipartUploadRepository
+	storage          storage.DiskEngine
+	bucket           string
+	dataDir          string
+	userID           string
+>>>>>>> Stashed changes
 }
 
 func newObjectTestEnv(t *testing.T) objectTestEnv {
@@ -75,22 +87,35 @@ func newObjectTestEnv(t *testing.T) objectTestEnv {
 	}
 
 	objectRepo := metadata.NewObjectRepository(db)
+<<<<<<< Updated upstream
 	now := time.Date(2026, 4, 30, 12, 0, 0, 0, time.UTC)
 	signer, err := publicread.NewSigner("12345678901234567890123456789012", func() time.Time { return now })
 	if err != nil {
 		t.Fatalf("new public read signer: %v", err)
 	}
 
+=======
+	multipartRepo := metadata.NewMultipartUploadRepository(db)
+>>>>>>> Stashed changes
 	handlers := &ObjectHandlers{
 		Users:            userRepo,
 		Buckets:          bucketRepo,
 		Objects:          objectRepo,
+<<<<<<< Updated upstream
 		Storage:          disk,
 		Now:              func() time.Time { return now },
 		NewID:            newSequentialID(),
 		Logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
 		S3CacheControl:   config.Default().S3CacheControl,
 		PublicReadSigner: signer,
+=======
+		MultipartUploads: multipartRepo,
+		Storage:          disk,
+		Now:              func() time.Time { return time.Date(2026, 4, 30, 12, 0, 0, 0, time.UTC) },
+		NewID:            newSequentialID(),
+		Logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
+		MinPartSize:      1, // small value for testability
+>>>>>>> Stashed changes
 	}
 
 	cfg := config.Default()
@@ -106,6 +131,7 @@ func newObjectTestEnv(t *testing.T) objectTestEnv {
 	})
 
 	return objectTestEnv{
+<<<<<<< Updated upstream
 		router:  router,
 		users:   userRepo,
 		buckets: bucketRepo,
@@ -117,6 +143,17 @@ func newObjectTestEnv(t *testing.T) objectTestEnv {
 		dataDir: dataDir,
 		userID:  user.ID,
 		now:     now,
+=======
+		router:           router,
+		users:            userRepo,
+		buckets:          bucketRepo,
+		objects:          objectRepo,
+		multipartUploads: multipartRepo,
+		storage:          disk,
+		bucket:           bucketName,
+		dataDir:          dataDir,
+		userID:           user.ID,
+>>>>>>> Stashed changes
 	}
 }
 

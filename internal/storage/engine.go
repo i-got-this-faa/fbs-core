@@ -1,4 +1,5 @@
 package storage
+
 import (
 	"context"
 	"io"
@@ -6,7 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 )
+
 const defaultDataDir = "./data"
+
 type DiskEngine interface {
 	Write(ctx context.Context, bucketName, key string, r io.Reader) (storagePath string, size int64, err error)
 	Read(ctx context.Context, storagePath string) (io.ReadCloser, error)
@@ -14,11 +17,18 @@ type DiskEngine interface {
 	Delete(ctx context.Context, storagePath string) error
 	Reconcile(ctx context.Context, knownObjects func(bucketName string) ([]string, error)) error
 	StoragePath(bucketName, key string) string
+	WritePart(ctx context.Context, uploadID string, partNumber int, r io.Reader) (storagePath string, size int64, err error)
+	AssembleParts(ctx context.Context, bucketName, key string, partPaths []string) (storagePath string, size int64, err error)
+	DeleteUploadParts(ctx context.Context, uploadID string) error
+	// ReconcileMultipartTmp removes orphaned multipart part directories that
+	// have no corresponding active upload in the metadata store.
+	ReconcileMultipartTmp(ctx context.Context, knownUploadIDs func() (map[string]struct{}, error)) error
 }
 type engine struct {
 	dataDir string
 	tmpDir  string
 }
+
 func New(dataDir string) (*engine, error) {
 	dataDir = strings.TrimSpace(dataDir)
 	if dataDir == "" {
