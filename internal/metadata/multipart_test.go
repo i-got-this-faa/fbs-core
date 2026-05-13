@@ -106,7 +106,7 @@ func TestMultipartUploadCreate_DefaultsCreatedAtWhenZero(t *testing.T) {
 	upload := newTestMultipartUpload(bucketName)
 	upload.CreatedAt = time.Time{}
 
-	before := time.Now().UTC().Add(-2 * time.Second)
+	start := time.Now().UTC()
 	if err := repo.Create(ctx, upload); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -120,9 +120,9 @@ func TestMultipartUploadCreate_DefaultsCreatedAtWhenZero(t *testing.T) {
 		t.Fatal("expected CreatedAt to be populated")
 	}
 
-	after := time.Now().UTC().Add(2 * time.Second)
-	if got.CreatedAt.Before(before) || got.CreatedAt.After(after) {
-		t.Fatalf("created_at out of expected range: got %s, expected between %s and %s", got.CreatedAt, before, after)
+	end := time.Now().UTC()
+	if got.CreatedAt.Before(start) || got.CreatedAt.After(end) {
+		t.Fatalf("created_at out of expected range: got %s, expected between %s and %s", got.CreatedAt, start, end)
 	}
 }
 
