@@ -17,11 +17,8 @@ const (
 	codeMalformedXML              = "MalformedXML"
 	codeNoSuchBucket              = "NoSuchBucket"
 	codeNoSuchKey                 = "NoSuchKey"
-<<<<<<< Updated upstream
 	codeNotImplemented            = "NotImplemented"
-=======
 	codeNoSuchUpload              = "NoSuchUpload"
->>>>>>> Stashed changes
 )
 
 const (
@@ -41,9 +38,6 @@ const (
 	messageMalformedXML              = "The XML you provided was not well-formed or did not validate against our published schema."
 	messageNoSuchBucket              = "The specified bucket does not exist."
 	messageNoSuchKey                 = "The specified key does not exist."
-<<<<<<< Updated upstream
 	messageNotImplemented            = "A header or query you provided implies functionality that is not implemented."
-=======
 	messageNoSuchUpload              = "The specified multipart upload does not exist."
->>>>>>> Stashed changes
 )

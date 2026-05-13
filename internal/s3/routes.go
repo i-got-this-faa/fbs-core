@@ -11,7 +11,6 @@ func RegisterBucketRoutes(r chi.Router, h *ObjectHandlers) {
 }
 
 func RegisterObjectRoutes(r chi.Router, h *ObjectHandlers) {
-<<<<<<< Updated upstream
 	RegisterObjectReadRoutes(r, h)
 	RegisterObjectMutationRoutes(r, h)
 }
@@ -23,17 +22,11 @@ func RegisterObjectReadRoutes(r chi.Router, h *ObjectHandlers) {
 
 func RegisterObjectMutationRoutes(r chi.Router, h *ObjectHandlers) {
 	r.Put("/{bucket}/*", h.DispatchObjectPut)
+	r.Post("/{bucket}/*", h.DispatchPost)
 	r.Delete("/{bucket}/*", h.DispatchObjectDelete)
 }
 
 func RegisterPublicReadRoutes(r chi.Router, h *ObjectHandlers) {
 	r.Get("/public/{bucket}/*", h.PublicReadObject)
 	r.Head("/public/{bucket}/*", h.PublicReadObject)
-=======
-	r.Put("/{bucket}/*", h.DispatchPut)
-	r.Get("/{bucket}/*", h.GetObject)
-	r.Head("/{bucket}/*", h.HeadObject)
-	r.Delete("/{bucket}/*", h.DispatchDelete)
-	r.Post("/{bucket}/*", h.DispatchPost)
->>>>>>> Stashed changes
 }

@@ -48,12 +48,8 @@ func main() {
 		os.Exit(1)
 	}
 
-<<<<<<< Updated upstream
 	rawObjectRepo := metadata.NewObjectRepository(db)
-=======
-	objectRepo := metadata.NewObjectRepository(db)
 	multipartRepo := metadata.NewMultipartUploadRepository(db)
->>>>>>> Stashed changes
 	if err := storageEngine.Reconcile(context.Background(), func(bucketName string) ([]string, error) {
 		return listKnownStoragePaths(context.Background(), rawObjectRepo, bucketName)
 	}); err != nil {
@@ -130,12 +126,12 @@ func main() {
 		Users:            userRepo,
 		Buckets:          bucketRepo,
 		Objects:          objectRepo,
-<<<<<<< Updated upstream
 		Activity:         metadata.NewActivityRepository(db),
 		Storage:          storageEngine,
 		Logger:           logger,
 		S3CacheControl:   cfg.S3CacheControl,
 		PublicReadSigner: publicReadSigner,
+		MultipartUploads: multipartRepo,
 	}
 	setupHandlers := &setup.Handlers{
 		Bootstrap: bootstrapRepo,
@@ -149,11 +145,6 @@ func main() {
 	}
 	if userCount == 0 {
 		logger.Info("first start setup required", "setup_url", startupSetupURL(cfg))
-=======
-		MultipartUploads: multipartRepo,
-		Storage:          storageEngine,
-		Logger:           logger,
->>>>>>> Stashed changes
 	}
 
 	cleanupCtx, cleanupCancel := context.WithCancel(context.Background())

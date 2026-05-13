@@ -19,19 +19,14 @@ type ObjectHandlers struct {
 	Users            metadata.UserRepository
 	Buckets          metadata.BucketRepository
 	Objects          metadata.ObjectRepository
-<<<<<<< Updated upstream
 	Activity         metadata.ActivityRepository
-=======
 	MultipartUploads metadata.MultipartUploadRepository
->>>>>>> Stashed changes
 	Storage          storage.DiskEngine
 	Now              func() time.Time
 	NewID            func() string
 	Logger           *slog.Logger
-<<<<<<< Updated upstream
 	S3CacheControl   string
 	PublicReadSigner *publicread.Signer
-=======
 	MinPartSize      int64 // zero means default 5 MiB
 
 	uploadLocksMu sync.Mutex
@@ -67,7 +62,6 @@ func (h *ObjectHandlers) acquireUploadLock(uploadID string) func() {
 		}
 		h.uploadLocksMu.Unlock()
 	}
->>>>>>> Stashed changes
 }
 
 func (h *ObjectHandlers) PutObject(w http.ResponseWriter, r *http.Request) {

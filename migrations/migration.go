@@ -97,7 +97,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_users_sigv4_access_key_id ON users(sigv4_a
 	},
 	{
 		version: 3,
-<<<<<<< Updated upstream
 		name:    "add object activity",
 		sql: `
 CREATE TABLE object_activity (
@@ -113,7 +112,10 @@ CREATE TABLE object_activity (
 
 CREATE INDEX idx_object_activity_created_at ON object_activity(created_at DESC, id DESC);
 CREATE INDEX idx_object_activity_bucket ON object_activity(bucket_name, created_at DESC);
-=======
+`,
+	},
+	{
+		version: 4,
 		name:    "add multipart content_type",
 		run: func(tx *sql.Tx) error {
 			var count int
@@ -129,7 +131,7 @@ CREATE INDEX idx_object_activity_bucket ON object_activity(bucket_name, created_
 		},
 	},
 	{
-		version: 4,
+		version: 5,
 		name:    "add multipart upload status",
 		run: func(tx *sql.Tx) error {
 			var count int
@@ -145,7 +147,7 @@ CREATE INDEX idx_object_activity_bucket ON object_activity(bucket_name, created_
 		},
 	},
 	{
-		version: 5,
+		version: 6,
 		name:    "add multipart status updated timestamp",
 		run: func(tx *sql.Tx) error {
 			var count int
@@ -161,7 +163,7 @@ CREATE INDEX idx_object_activity_bucket ON object_activity(bucket_name, created_
 		},
 	},
 	{
-		version: 6,
+		version: 7,
 		name:    "validate multipart upload status",
 		sql: `
 CREATE TRIGGER IF NOT EXISTS validate_multipart_upload_status_insert
@@ -179,7 +181,6 @@ WHEN NEW.status NOT IN ('active', 'completing', 'aborted')
 BEGIN
     SELECT RAISE(ABORT, 'invalid multipart upload status');
 END;
->>>>>>> Stashed changes
 `,
 	},
 }

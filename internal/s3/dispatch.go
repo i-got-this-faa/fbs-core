@@ -50,8 +50,12 @@ func (h *ObjectHandlers) DispatchObjectGet(w http.ResponseWriter, r *http.Reques
 
 func (h *ObjectHandlers) DispatchObjectPut(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
-	if query.Has("acl") || query.Has("uploadId") || query.Has("uploads") {
+	if query.Has("acl") || query.Has("uploads") {
 		h.NotImplemented(w, r)
+		return
+	}
+	if query.Has("uploadId") || query.Has("partNumber") {
+		h.DispatchPut(w, r)
 		return
 	}
 	if r.Header.Get("x-amz-copy-source") != "" {
@@ -63,8 +67,12 @@ func (h *ObjectHandlers) DispatchObjectPut(w http.ResponseWriter, r *http.Reques
 
 func (h *ObjectHandlers) DispatchObjectDelete(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
-	if query.Has("uploadId") || query.Has("uploads") {
+	if query.Has("uploads") {
 		h.NotImplemented(w, r)
+		return
+	}
+	if query.Has("uploadId") {
+		h.DispatchDelete(w, r)
 		return
 	}
 	h.DeleteObject(w, r)
