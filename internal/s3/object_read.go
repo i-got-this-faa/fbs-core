@@ -124,7 +124,8 @@ func (h *ObjectHandlers) publicCacheControl(r *http.Request) string {
 		return "public, max-age=0, must-revalidate"
 	}
 
-	return fmt.Sprintf("public, max-age=%d, must-revalidate", int64(remaining/time.Second))
+	maxAge := int64(remaining.Truncate(time.Second).Seconds())
+	return fmt.Sprintf("public, max-age=%d, must-revalidate", maxAge)
 }
 
 func mapPublicStorageReadError(w http.ResponseWriter, r *http.Request, h *ObjectHandlers, err error, obj *metadata.Object) {
