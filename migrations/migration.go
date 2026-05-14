@@ -158,7 +158,11 @@ CREATE INDEX idx_object_activity_bucket ON object_activity(bucket_name, created_
 			if count > 0 {
 				return nil
 			}
-			_, err = tx.Exec(`ALTER TABLE multipart_uploads ADD COLUMN status_updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP`)
+			_, err = tx.Exec(`ALTER TABLE multipart_uploads ADD COLUMN status_updated_at TIMESTAMP`)
+			if err != nil {
+				return err
+			}
+			_, err = tx.Exec(`UPDATE multipart_uploads SET status_updated_at = CURRENT_TIMESTAMP WHERE status_updated_at IS NULL`)
 			return err
 		},
 	},
