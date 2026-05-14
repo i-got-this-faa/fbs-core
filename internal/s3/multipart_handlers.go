@@ -371,6 +371,10 @@ func (h *ObjectHandlers) CompleteMultipartUpload(w http.ResponseWriter, r *http.
 	claimed = false
 	completed = true
 
+	if err := h.recordActivity(r.Context(), bucketName, key); err != nil {
+		h.logError("record object activity after multipart complete", err, bucketName, key, "")
+	}
+
 	if oldStoragePath != "" && oldStoragePath != storagePath {
 		ctx, cancel := withCleanupTimeout()
 		err := h.Storage.Delete(ctx, oldStoragePath)
