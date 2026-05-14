@@ -30,17 +30,18 @@ import (
 )
 
 type objectTestEnv struct {
-	router  http.Handler
-	users   metadata.UserRepository
-	buckets metadata.BucketRepository
-	objects metadata.ObjectRepository
-	storage storage.DiskEngine
-	sigv4   auth.SigV4Credentials
-	signer  *publicread.Signer
-	bucket  string
-	dataDir string
-	userID  string
-	now     time.Time
+	router           http.Handler
+	users            metadata.UserRepository
+	buckets          metadata.BucketRepository
+	objects          metadata.ObjectRepository
+	multipartUploads metadata.MultipartUploadRepository
+	storage          storage.DiskEngine
+	sigv4            auth.SigV4Credentials
+	signer           *publicread.Signer
+	bucket           string
+	dataDir          string
+	userID           string
+	now              time.Time
 }
 
 func newObjectTestEnv(t *testing.T) objectTestEnv {
@@ -80,17 +81,19 @@ func newObjectTestEnv(t *testing.T) objectTestEnv {
 	if err != nil {
 		t.Fatalf("new public read signer: %v", err)
 	}
-
+	multipartRepo := metadata.NewMultipartUploadRepository(db)
 	handlers := &ObjectHandlers{
 		Users:            userRepo,
 		Buckets:          bucketRepo,
 		Objects:          objectRepo,
+		MultipartUploads: multipartRepo,
 		Storage:          disk,
 		Now:              func() time.Time { return now },
 		NewID:            newSequentialID(),
 		Logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
 		S3CacheControl:   config.Default().S3CacheControl,
 		PublicReadSigner: signer,
+		MinPartSize:      1, // small value for testability
 	}
 
 	cfg := config.Default()
@@ -106,17 +109,18 @@ func newObjectTestEnv(t *testing.T) objectTestEnv {
 	})
 
 	return objectTestEnv{
-		router:  router,
-		users:   userRepo,
-		buckets: bucketRepo,
-		objects: objectRepo,
-		storage: disk,
-		sigv4:   sigv4,
-		signer:  signer,
-		bucket:  bucketName,
-		dataDir: dataDir,
-		userID:  user.ID,
-		now:     now,
+		router:           router,
+		users:            userRepo,
+		buckets:          bucketRepo,
+		objects:          objectRepo,
+		multipartUploads: multipartRepo,
+		storage:          disk,
+		sigv4:            sigv4,
+		signer:           signer,
+		bucket:           bucketName,
+		dataDir:          dataDir,
+		userID:           user.ID,
+		now:              now,
 	}
 }
 

@@ -1,11 +1,14 @@
 package storage
+
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 )
+
 func (e *engine) Delete(ctx context.Context, storagePath string) error {
 	select {
 	case <-ctx.Done():
@@ -25,6 +28,7 @@ func (e *engine) Delete(ctx context.Context, storagePath string) error {
 	e.pruneEmptyParents(fullPath)
 	return nil
 }
+
 func (e *engine) pruneEmptyParents(fullPath string) {
 	rel, err := filepath.Rel(e.dataDir, fullPath)
 	if err != nil {
@@ -46,6 +50,24 @@ func (e *engine) pruneEmptyParents(fullPath string) {
 		currentDir = filepath.Dir(currentDir)
 	}
 }
+func (e *engine) DeleteUploadParts(ctx context.Context, uploadID string) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	if err := validateUploadID(uploadID); err != nil {
+		return err
+	}
+
+	partDir := filepath.Join(e.tmpDir, "multipart", uploadID)
+	if err := os.RemoveAll(partDir); err != nil {
+		return fmt.Errorf("remove upload parts directory: %w", err)
+	}
+	return nil
+}
+
 func firstPathElement(path string) string {
 	cleaned := filepath.Clean(path)
 	if cleaned == "." || cleaned == "" {

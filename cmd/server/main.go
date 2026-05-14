@@ -49,10 +49,25 @@ func main() {
 	}
 
 	rawObjectRepo := metadata.NewObjectRepository(db)
+	multipartRepo := metadata.NewMultipartUploadRepository(db)
 	if err := storageEngine.Reconcile(context.Background(), func(bucketName string) ([]string, error) {
 		return listKnownStoragePaths(context.Background(), rawObjectRepo, bucketName)
 	}); err != nil {
 		logger.Error("failed to reconcile storage engine", "error", err)
+		os.Exit(1)
+	}
+	if err := storageEngine.ReconcileMultipartTmp(context.Background(), func() (map[string]struct{}, error) {
+		ids, err := multipartRepo.ListAllUploadIDs(context.Background())
+		if err != nil {
+			return nil, err
+		}
+		m := make(map[string]struct{}, len(ids))
+		for _, id := range ids {
+			m[id] = struct{}{}
+		}
+		return m, nil
+	}); err != nil {
+		logger.Error("failed to reconcile multipart tmp", "error", err)
 		os.Exit(1)
 	}
 
@@ -116,6 +131,7 @@ func main() {
 		Logger:           logger,
 		S3CacheControl:   cfg.S3CacheControl,
 		PublicReadSigner: publicReadSigner,
+		MultipartUploads: multipartRepo,
 	}
 	setupHandlers := &setup.Handlers{
 		Bootstrap: bootstrapRepo,
@@ -130,6 +146,10 @@ func main() {
 	if userCount == 0 {
 		logger.Info("first start setup required", "setup_url", startupSetupURL(cfg))
 	}
+
+	cleanupCtx, cleanupCancel := context.WithCancel(context.Background())
+	defer cleanupCancel()
+	go s3.StaleMultipartCleanup(cleanupCtx, multipartRepo, storageEngine, cfg.MultipartTTL, cfg.MultipartCleanupInterval, logger)
 
 	router := httpapi.NewRouter(cfg, logger, func(r chi.Router) {
 		s3.RegisterPublicReadRoutes(r, objectHandlers)

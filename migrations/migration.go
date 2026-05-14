@@ -9,6 +9,7 @@ type migration struct {
 	version int
 	name    string
 	sql     string
+	run     func(*sql.Tx) error
 }
 
 var migrations = []migration{
@@ -49,10 +50,13 @@ CREATE TABLE IF NOT EXISTS objects (
 CREATE INDEX IF NOT EXISTS idx_objects_bucket_prefix ON objects(bucket_name, key);
 
 CREATE TABLE IF NOT EXISTS multipart_uploads (
-    id          TEXT PRIMARY KEY,
-    bucket_name TEXT NOT NULL REFERENCES buckets(name),
-    key         TEXT NOT NULL,
-    created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    id           TEXT PRIMARY KEY,
+    bucket_name  TEXT NOT NULL REFERENCES buckets(name),
+    key          TEXT NOT NULL,
+    content_type TEXT NOT NULL DEFAULT 'application/octet-stream',
+    status       TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'completing', 'aborted')),
+    created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    status_updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS multipart_parts (
@@ -64,7 +68,23 @@ CREATE TABLE IF NOT EXISTS multipart_parts (
     created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (upload_id, part_number)
 );
-`,
+
+CREATE TRIGGER IF NOT EXISTS validate_multipart_upload_status_insert
+BEFORE INSERT ON multipart_uploads
+FOR EACH ROW
+WHEN NEW.status NOT IN ('active', 'completing', 'aborted')
+BEGIN
+    SELECT RAISE(ABORT, 'invalid multipart upload status');
+END;
+
+CREATE TRIGGER IF NOT EXISTS validate_multipart_upload_status_update
+BEFORE UPDATE OF status ON multipart_uploads
+FOR EACH ROW
+WHEN NEW.status NOT IN ('active', 'completing', 'aborted')
+BEGIN
+    SELECT RAISE(ABORT, 'invalid multipart upload status');
+END;
+	`,
 	},
 	{
 		version: 2,
@@ -92,6 +112,79 @@ CREATE TABLE object_activity (
 
 CREATE INDEX idx_object_activity_created_at ON object_activity(created_at DESC, id DESC);
 CREATE INDEX idx_object_activity_bucket ON object_activity(bucket_name, created_at DESC);
+`,
+	},
+	{
+		version: 4,
+		name:    "add multipart content_type",
+		run: func(tx *sql.Tx) error {
+			var count int
+			err := tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('multipart_uploads') WHERE name = 'content_type'`).Scan(&count)
+			if err != nil {
+				return err
+			}
+			if count > 0 {
+				return nil
+			}
+			_, err = tx.Exec(`ALTER TABLE multipart_uploads ADD COLUMN content_type TEXT NOT NULL DEFAULT 'application/octet-stream'`)
+			return err
+		},
+	},
+	{
+		version: 5,
+		name:    "add multipart upload status",
+		run: func(tx *sql.Tx) error {
+			var count int
+			err := tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('multipart_uploads') WHERE name = 'status'`).Scan(&count)
+			if err != nil {
+				return err
+			}
+			if count > 0 {
+				return nil
+			}
+			_, err = tx.Exec(`ALTER TABLE multipart_uploads ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`)
+			return err
+		},
+	},
+	{
+		version: 6,
+		name:    "add multipart status updated timestamp",
+		run: func(tx *sql.Tx) error {
+			var count int
+			err := tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('multipart_uploads') WHERE name = 'status_updated_at'`).Scan(&count)
+			if err != nil {
+				return err
+			}
+			if count > 0 {
+				return nil
+			}
+			_, err = tx.Exec(`ALTER TABLE multipart_uploads ADD COLUMN status_updated_at TIMESTAMP`)
+			if err != nil {
+				return err
+			}
+			_, err = tx.Exec(`UPDATE multipart_uploads SET status_updated_at = CURRENT_TIMESTAMP WHERE status_updated_at IS NULL`)
+			return err
+		},
+	},
+	{
+		version: 7,
+		name:    "validate multipart upload status",
+		sql: `
+CREATE TRIGGER IF NOT EXISTS validate_multipart_upload_status_insert
+BEFORE INSERT ON multipart_uploads
+FOR EACH ROW
+WHEN NEW.status NOT IN ('active', 'completing', 'aborted')
+BEGIN
+    SELECT RAISE(ABORT, 'invalid multipart upload status');
+END;
+
+CREATE TRIGGER IF NOT EXISTS validate_multipart_upload_status_update
+BEFORE UPDATE OF status ON multipart_uploads
+FOR EACH ROW
+WHEN NEW.status NOT IN ('active', 'completing', 'aborted')
+BEGIN
+    SELECT RAISE(ABORT, 'invalid multipart upload status');
+END;
 `,
 	},
 }
@@ -125,8 +218,14 @@ func runMigration(db *sql.DB, m migration) error {
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.Exec(m.sql); err != nil {
-		return fmt.Errorf("exec migration: %w", err)
+	var execErr error
+	if m.run != nil {
+		execErr = m.run(tx)
+	} else {
+		_, execErr = tx.Exec(m.sql)
+	}
+	if execErr != nil {
+		return fmt.Errorf("exec migration: %w", execErr)
 	}
 
 	if _, err := tx.Exec(`INSERT INTO schema_migrations (version, name) VALUES (?, ?)`, m.version, m.name); err != nil {

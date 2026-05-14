@@ -64,8 +64,8 @@ func TestRun_Idempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("count migrations: %v", err)
 	}
-	if count != 3 {
-		t.Errorf("migration count = %d, want 3", count)
+	if count != 7 {
+		t.Errorf("migration count = %d, want 7", count)
 	}
 }
 
@@ -152,13 +152,13 @@ func TestRun_BootstrapFromInitSQL(t *testing.T) {
 		t.Fatalf("Run after manual bootstrap: %v", err)
 	}
 
-	// Verify both v1 and v2 were recorded
+	// Verify all three migrations were recorded
 	err = db.QueryRow(`SELECT count(*) FROM schema_migrations`).Scan(&count)
 	if err != nil {
 		t.Fatalf("count migrations: %v", err)
 	}
-	if count != 3 {
-		t.Errorf("migration count = %d, want 3", count)
+	if count != 7 {
+		t.Errorf("migration count = %d, want 7", count)
 	}
 
 	// Verify sigv4 columns were added by v2
@@ -169,6 +169,50 @@ func TestRun_BootstrapFromInitSQL(t *testing.T) {
 	}
 	if colCount != 2 {
 		t.Errorf("sigv4 column count = %d, want 2", colCount)
+	}
+
+	// Verify content_type column was added by v3
+	err = db.QueryRow(`SELECT count(*) FROM pragma_table_info('multipart_uploads') WHERE name = 'content_type'`).Scan(&colCount)
+	if err != nil {
+		t.Fatalf("check content_type column: %v", err)
+	}
+	if colCount != 1 {
+		t.Errorf("content_type column count = %d, want 1", colCount)
+	}
+
+	// Verify status column was added by v4
+	err = db.QueryRow(`SELECT count(*) FROM pragma_table_info('multipart_uploads') WHERE name = 'status'`).Scan(&colCount)
+	if err != nil {
+		t.Fatalf("check status column: %v", err)
+	}
+	if colCount != 1 {
+		t.Errorf("status column count = %d, want 1", colCount)
+	}
+
+	// Verify status_updated_at column was added by v5
+	err = db.QueryRow(`SELECT count(*) FROM pragma_table_info('multipart_uploads') WHERE name = 'status_updated_at'`).Scan(&colCount)
+	if err != nil {
+		t.Fatalf("check status_updated_at column: %v", err)
+	}
+	if colCount != 1 {
+		t.Errorf("status_updated_at column count = %d, want 1", colCount)
+	}
+
+	// Verify validation triggers were added by v6.
+	err = db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='trigger' AND name IN ('validate_multipart_upload_status_insert', 'validate_multipart_upload_status_update')`).Scan(&colCount)
+	if err != nil {
+		t.Fatalf("check multipart status triggers: %v", err)
+	}
+	if colCount != 2 {
+		t.Errorf("multipart status trigger count = %d, want 2", colCount)
+	}
+
+	_, err = db.Exec(`
+		INSERT INTO multipart_uploads (id, bucket_name, key, content_type, status, created_at, status_updated_at)
+		VALUES ('bad-upload', 'missing-bucket', 'key', 'application/octet-stream', 'invalid', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+	`)
+	if err == nil {
+		t.Fatal("expected invalid multipart status insert to fail")
 	}
 }
 

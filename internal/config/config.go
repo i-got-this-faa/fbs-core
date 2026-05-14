@@ -13,17 +13,19 @@ import (
 )
 
 const (
-	defaultHTTPAddr         = "127.0.0.1:9000"
-	defaultDBPath           = "./fbs.db"
-	defaultDataDir          = "./data"
-	defaultMetadataCache    = int64(512 * 1024 * 1024)
-	defaultS3CacheControl   = "private, max-age=0, must-revalidate"
-	defaultPublicReadTTL    = time.Hour
-	defaultPublicReadMaxTTL = 24 * time.Hour
-	defaultReadTimeout      = 15 * time.Second
-	defaultWriteTimeout     = 30 * time.Second
-	defaultIdleTimeout      = 60 * time.Second
-	defaultShutdownTimeout  = 10 * time.Second
+	defaultHTTPAddr                 = "127.0.0.1:9000"
+	defaultDBPath                   = "./fbs.db"
+	defaultDataDir                  = "./data"
+	defaultMetadataCache            = int64(512 * 1024 * 1024)
+	defaultS3CacheControl           = "private, max-age=0, must-revalidate"
+	defaultPublicReadTTL            = time.Hour
+	defaultPublicReadMaxTTL         = 24 * time.Hour
+	defaultReadTimeout              = 15 * time.Second
+	defaultWriteTimeout             = 30 * time.Second
+	defaultIdleTimeout              = 60 * time.Second
+	defaultShutdownTimeout          = 10 * time.Second
+	defaultMultipartTTL             = 24 * time.Hour
+	defaultMultipartCleanupInterval = 1 * time.Hour
 )
 
 var defaultCORSAllowedOrigins = []string{
@@ -34,37 +36,41 @@ var defaultCORSAllowedOrigins = []string{
 }
 
 type Config struct {
-	HTTPAddr                string
-	DBPath                  string
-	DataDir                 string
-	DevMode                 bool
-	PublicBaseURL           string
-	MetadataCacheSizeBytes  int64
-	S3CacheControl          string
-	PublicReadSigningSecret string
-	PublicReadDefaultTTL    time.Duration
-	PublicReadMaxTTL        time.Duration
-	CORSAllowedOrigins      []string
-	ReadTimeout             time.Duration
-	WriteTimeout            time.Duration
-	IdleTimeout             time.Duration
-	ShutdownTimeout         time.Duration
+	HTTPAddr                 string
+	DBPath                   string
+	DataDir                  string
+	DevMode                  bool
+	PublicBaseURL            string
+	MetadataCacheSizeBytes   int64
+	S3CacheControl           string
+	PublicReadSigningSecret  string
+	PublicReadDefaultTTL     time.Duration
+	PublicReadMaxTTL         time.Duration
+	CORSAllowedOrigins       []string
+	ReadTimeout              time.Duration
+	WriteTimeout             time.Duration
+	IdleTimeout              time.Duration
+	ShutdownTimeout          time.Duration
+	MultipartTTL             time.Duration
+	MultipartCleanupInterval time.Duration
 }
 
 func Default() Config {
 	return Config{
-		HTTPAddr:               defaultHTTPAddr,
-		DBPath:                 defaultDBPath,
-		DataDir:                defaultDataDir,
-		MetadataCacheSizeBytes: defaultMetadataCache,
-		S3CacheControl:         defaultS3CacheControl,
-		PublicReadDefaultTTL:   defaultPublicReadTTL,
-		PublicReadMaxTTL:       defaultPublicReadMaxTTL,
-		CORSAllowedOrigins:     append([]string(nil), defaultCORSAllowedOrigins...),
-		ReadTimeout:            defaultReadTimeout,
-		WriteTimeout:           defaultWriteTimeout,
-		IdleTimeout:            defaultIdleTimeout,
-		ShutdownTimeout:        defaultShutdownTimeout,
+		HTTPAddr:                 defaultHTTPAddr,
+		DBPath:                   defaultDBPath,
+		DataDir:                  defaultDataDir,
+		MetadataCacheSizeBytes:   defaultMetadataCache,
+		S3CacheControl:           defaultS3CacheControl,
+		PublicReadDefaultTTL:     defaultPublicReadTTL,
+		PublicReadMaxTTL:         defaultPublicReadMaxTTL,
+		CORSAllowedOrigins:       append([]string(nil), defaultCORSAllowedOrigins...),
+		ReadTimeout:              defaultReadTimeout,
+		WriteTimeout:             defaultWriteTimeout,
+		IdleTimeout:              defaultIdleTimeout,
+		ShutdownTimeout:          defaultShutdownTimeout,
+		MultipartTTL:             defaultMultipartTTL,
+		MultipartCleanupInterval: defaultMultipartCleanupInterval,
 	}
 }
 
@@ -96,12 +102,22 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
+	multipartTTL, err := durationFromEnv("FBS_MULTIPART_TTL", defaults.MultipartTTL)
+	if err != nil {
+		return Config{}, err
+	}
+
 	publicReadDefaultTTL, err := durationFromEnv("FBS_PUBLIC_READ_DEFAULT_TTL", defaults.PublicReadDefaultTTL)
 	if err != nil {
 		return Config{}, err
 	}
 
 	publicReadMaxTTL, err := durationFromEnv("FBS_PUBLIC_READ_MAX_TTL", defaults.PublicReadMaxTTL)
+	if err != nil {
+		return Config{}, err
+	}
+
+	multipartCleanupInterval, err := durationFromEnv("FBS_MULTIPART_CLEANUP_INTERVAL", defaults.MultipartCleanupInterval)
 	if err != nil {
 		return Config{}, err
 	}
@@ -130,6 +146,8 @@ func Load() (Config, error) {
 	flagSet.DurationVar(&writeTimeout, "write-timeout", writeTimeout, "HTTP write timeout")
 	flagSet.DurationVar(&idleTimeout, "idle-timeout", idleTimeout, "HTTP idle timeout")
 	flagSet.DurationVar(&shutdownTimeout, "shutdown-timeout", shutdownTimeout, "HTTP shutdown timeout")
+	flagSet.DurationVar(&multipartTTL, "multipart-ttl", multipartTTL, "Multipart upload TTL before stale cleanup")
+	flagSet.DurationVar(&multipartCleanupInterval, "multipart-cleanup-interval", multipartCleanupInterval, "Interval between stale multipart upload cleanups")
 
 	if err := flagSet.Parse(os.Args[1:]); err != nil {
 		return Config{}, err
@@ -141,21 +159,23 @@ func Load() (Config, error) {
 	}
 
 	cfg := Config{
-		HTTPAddr:                strings.TrimSpace(*httpAddr),
-		DBPath:                  strings.TrimSpace(*dbPath),
-		DataDir:                 strings.TrimSpace(*dataDir),
-		DevMode:                 *devModeFlag,
-		PublicBaseURL:           strings.TrimSpace(*publicBaseURL),
-		MetadataCacheSizeBytes:  parsedMetadataCacheSize,
-		S3CacheControl:          strings.TrimSpace(*s3CacheControl),
-		PublicReadSigningSecret: strings.TrimSpace(*publicReadSigningSecret),
-		PublicReadDefaultTTL:    publicReadDefaultTTL,
-		PublicReadMaxTTL:        publicReadMaxTTL,
-		CORSAllowedOrigins:      splitCSV(*corsAllowedOrigins),
-		ReadTimeout:             readTimeout,
-		WriteTimeout:            writeTimeout,
-		IdleTimeout:             idleTimeout,
-		ShutdownTimeout:         shutdownTimeout,
+		HTTPAddr:                 strings.TrimSpace(*httpAddr),
+		DBPath:                   strings.TrimSpace(*dbPath),
+		DataDir:                  strings.TrimSpace(*dataDir),
+		DevMode:                  *devModeFlag,
+		PublicBaseURL:            strings.TrimSpace(*publicBaseURL),
+		MetadataCacheSizeBytes:   parsedMetadataCacheSize,
+		S3CacheControl:           strings.TrimSpace(*s3CacheControl),
+		PublicReadSigningSecret:  strings.TrimSpace(*publicReadSigningSecret),
+		PublicReadDefaultTTL:     publicReadDefaultTTL,
+		PublicReadMaxTTL:         publicReadMaxTTL,
+		CORSAllowedOrigins:       splitCSV(*corsAllowedOrigins),
+		ReadTimeout:              readTimeout,
+		WriteTimeout:             writeTimeout,
+		IdleTimeout:              idleTimeout,
+		ShutdownTimeout:          shutdownTimeout,
+		MultipartTTL:             multipartTTL,
+		MultipartCleanupInterval: multipartCleanupInterval,
 	}
 
 	if err := cfg.Validate(); err != nil {
@@ -205,6 +225,18 @@ func (c Config) Validate() error {
 
 	if c.ReadTimeout <= 0 || c.WriteTimeout <= 0 || c.IdleTimeout <= 0 || c.ShutdownTimeout <= 0 {
 		return fmt.Errorf("timeouts must be greater than zero")
+	}
+
+	if c.MultipartTTL <= 0 {
+		return fmt.Errorf("multipart TTL must be greater than zero")
+	}
+
+	if c.MultipartCleanupInterval <= 0 {
+		return fmt.Errorf("multipart cleanup interval must be greater than zero")
+	}
+	const minCleanupInterval = 1 * time.Minute
+	if c.MultipartCleanupInterval < minCleanupInterval {
+		return fmt.Errorf("multipart cleanup interval must be at least %s", minCleanupInterval)
 	}
 
 	if c.DevMode {

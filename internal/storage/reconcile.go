@@ -83,7 +83,14 @@ func (e *engine) purgeTmp(ctx context.Context) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if path == e.tmpDir || d.IsDir() {
+		if path == e.tmpDir {
+			return nil
+		}
+		// Preserve active multipart upload directories.
+		if d.IsDir() {
+			if path == filepath.Join(e.tmpDir, "multipart") {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
@@ -99,6 +106,44 @@ func normalizeKnownObjectPath(bucketName, storagePath string) string {
 		return cleaned
 	}
 	return filepath.Join(bucketName, cleaned)
+}
+
+func (e *engine) ReconcileMultipartTmp(ctx context.Context, knownUploadIDs func() (map[string]struct{}, error)) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	known, err := knownUploadIDs()
+	if err != nil {
+		return err
+	}
+
+	multipartDir := filepath.Join(e.tmpDir, "multipart")
+	entries, err := os.ReadDir(multipartDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	for _, entry := range entries {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if !entry.IsDir() {
+			continue
+		}
+		if _, ok := known[entry.Name()]; ok {
+			continue
+		}
+		orphanDir := filepath.Join(multipartDir, entry.Name())
+		if err := os.RemoveAll(orphanDir); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (e *engine) pruneEmptyDirs(root string) {

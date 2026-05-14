@@ -773,7 +773,6 @@ func TestNotImplementedSubresources(t *testing.T) {
 		{http.MethodPut, "/" + env.bucket + "?policy"},
 		{http.MethodDelete, "/" + env.bucket + "?policy"},
 		{http.MethodGet, "/" + env.bucket + "?uploads"},
-		{http.MethodDelete, "/" + env.bucket + "/object.txt?uploadId=1"},
 	}
 	for _, tc := range cases {
 		resp := env.do(t, tc.method, tc.path, "", nil)

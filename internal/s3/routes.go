@@ -22,6 +22,7 @@ func RegisterObjectReadRoutes(r chi.Router, h *ObjectHandlers) {
 
 func RegisterObjectMutationRoutes(r chi.Router, h *ObjectHandlers) {
 	r.Put("/{bucket}/*", h.DispatchObjectPut)
+	r.Post("/{bucket}/*", h.DispatchPost)
 	r.Delete("/{bucket}/*", h.DispatchObjectDelete)
 }
 
