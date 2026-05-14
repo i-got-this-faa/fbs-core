@@ -100,6 +100,11 @@ func (r *sqliteMultipartUploadRepository) Create(ctx context.Context, upload *Mu
 		upload.StatusUpdatedAt = upload.CreatedAt
 	}
 
+	createdAt := upload.CreatedAt
+	if createdAt.IsZero() {
+		createdAt = time.Now().UTC()
+	}
+
 	_, err := r.db.ExecContext(ctx, q,
 		upload.ID,
 		upload.BucketName,

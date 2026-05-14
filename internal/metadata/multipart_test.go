@@ -107,6 +107,35 @@ func TestMultipartUploadCreateGet(t *testing.T) {
 	}
 }
 
+func TestMultipartUploadCreate_DefaultsCreatedAtWhenZero(t *testing.T) {
+	db := openTestDBWithMultiparts(t)
+	repo := NewMultipartUploadRepository(db)
+	ctx := context.Background()
+
+	bucketName := insertTestBucket(t, db)
+	upload := newTestMultipartUpload(bucketName)
+	upload.CreatedAt = time.Time{}
+
+	start := time.Now().UTC()
+	if err := repo.Create(ctx, upload); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	got, err := repo.GetByID(ctx, upload.ID)
+	if err != nil {
+		t.Fatalf("GetByID: %v", err)
+	}
+
+	if got.CreatedAt.IsZero() {
+		t.Fatal("expected CreatedAt to be populated")
+	}
+
+	end := time.Now().UTC()
+	if got.CreatedAt.Before(start) || got.CreatedAt.After(end) {
+		t.Fatalf("created_at out of expected range: got %s, expected between %s and %s", got.CreatedAt, start, end)
+	}
+}
+
 func TestMultipartUploadDelete(t *testing.T) {
 	db := openTestDBWithMultiparts(t)
 	repo := NewMultipartUploadRepository(db)
