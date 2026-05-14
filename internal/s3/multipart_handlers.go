@@ -117,6 +117,10 @@ func (h *ObjectHandlers) UploadPart(w http.ResponseWriter, r *http.Request) {
 		WriteS3Error(w, r, http.StatusNotFound, codeNoSuchUpload, messageNoSuchUpload)
 		return
 	}
+	if fmt.Sprint(upload.Status) != "active" {
+		WriteS3Error(w, r, http.StatusNotFound, codeNoSuchUpload, messageNoSuchUpload)
+		return
+	}
 
 	pipeline, err := newChecksumPipeline(r.Header)
 	if err != nil {
