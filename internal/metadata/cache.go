@@ -276,6 +276,14 @@ func NewCachedObjectRepository(delegate ObjectRepository, cache *MetadataCache) 
 	return &cachedObjectRepository{delegate: delegate, cache: cache}
 }
 
+func PutObjectInCache(repo ObjectRepository, object *Object) {
+	cached, ok := repo.(*cachedObjectRepository)
+	if !ok {
+		return
+	}
+	cached.cache.putObject(object)
+}
+
 func (r *cachedObjectRepository) Create(ctx context.Context, object *Object) error {
 	if err := r.delegate.Create(ctx, object); err != nil {
 		return err
