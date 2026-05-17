@@ -375,9 +375,8 @@ func (h *ObjectHandlers) CompleteMultipartUpload(w http.ResponseWriter, r *http.
 	claimed = false
 	completed = true
 
-	if err := h.recordActivity(r.Context(), bucketName, key); err != nil {
-		h.logError("record object activity after multipart complete", err, bucketName, key, "")
-	}
+	metadata.PutObjectInCache(h.Objects, obj)
+	h.recordActivity(r, "complete_multipart_upload", bucketName, key, size, etag)
 
 	if oldStoragePath != "" && oldStoragePath != storagePath {
 		ctx, cancel := withCleanupTimeout()
