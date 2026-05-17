@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -105,7 +106,7 @@ func TestCreateBucketInvalidName(t *testing.T) {
 	t.Parallel()
 
 	env := newObjectTestEnv(t)
-	for _, name := range []string{"Abc", "ab", "bucket..name", "bucket-.name", "192.168.0.1"} {
+	for _, name := range []string{"Abc", "ab", "bucket..name", "bucket-.name", "192.168.0.1", "public"} {
 		resp := env.do(t, http.MethodPut, "/"+name, "", nil)
 		if resp.Code != http.StatusBadRequest {
 			t.Fatalf("name %q status = %d, want 400; body=%s", name, resp.Code, resp.Body.String())
@@ -663,6 +664,17 @@ func TestCopyObject(t *testing.T) {
 	}
 	if obj.ContentType != "text/plain" || quoteETag(obj.ETag) != put.Header().Get("ETag") {
 		t.Fatalf("copied metadata = %+v etag header=%q", obj, put.Header().Get("ETag"))
+	}
+
+	oldCopiedPath := obj.StoragePath
+	overwrite := env.do(t, http.MethodPut, "/"+env.bucket+"/copied.txt", "", map[string]string{
+		"x-amz-copy-source": "/" + env.bucket + "/source%20file.txt",
+	})
+	if overwrite.Code != http.StatusOK {
+		t.Fatalf("overwrite copy status = %d, want 200; body=%s", overwrite.Code, overwrite.Body.String())
+	}
+	if _, err := env.storage.Open(context.Background(), oldCopiedPath); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("old copied backing file error = %v, want ErrNotFound", err)
 	}
 
 	replace := env.do(t, http.MethodPut, "/"+env.bucket+"/replaced.txt", "", map[string]string{

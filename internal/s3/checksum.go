@@ -13,6 +13,7 @@ import (
 	"hash/crc32"
 	"io"
 	"net/http"
+	"strings"
 )
 
 type checksumPipeline struct {
@@ -42,6 +43,22 @@ func newChecksumPipeline(header http.Header) (*checksumPipeline, error) {
 			expected: expected,
 			sum: func() []byte {
 				return md5Hash.Sum(nil)
+			},
+		})
+	}
+
+	if value := strings.TrimSpace(header.Get("X-Amz-Content-SHA256")); value != "" && value != unsignedPayloadHash {
+		expected, err := hex.DecodeString(value)
+		if err != nil || len(expected) != sha256.Size {
+			return nil, fmt.Errorf("%s: %w", "X-Amz-Content-SHA256", errInvalidDigest)
+		}
+		sha256Hash := sha256.New()
+		writers = append(writers, sha256Hash)
+		checks = append(checks, checksumCheck{
+			name:     "X-Amz-Content-SHA256",
+			expected: expected,
+			sum: func() []byte {
+				return sha256Hash.Sum(nil)
 			},
 		})
 	}

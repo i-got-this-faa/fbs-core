@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"encoding/json"
 	"io"
 	"log/slog"
 	stdhttp "net/http"
@@ -10,6 +9,7 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/i-got-this-faa/fbs/internal/config"
 	appmiddleware "github.com/i-got-this-faa/fbs/internal/http/middleware"
+	"github.com/i-got-this-faa/fbs/internal/responses"
 )
 
 type statusResponse struct {
@@ -50,10 +50,5 @@ func serveStatus(status string) stdhttp.HandlerFunc {
 }
 
 func writeJSON(w stdhttp.ResponseWriter, statusCode int, payload any) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(statusCode)
-
-	if err := json.NewEncoder(w).Encode(payload); err != nil {
-		stdhttp.Error(w, stdhttp.StatusText(stdhttp.StatusInternalServerError), stdhttp.StatusInternalServerError)
-	}
+	responses.WriteJSON(w, statusCode, payload)
 }

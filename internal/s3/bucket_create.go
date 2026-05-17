@@ -158,6 +158,9 @@ func validateBucketName(name string) error {
 	if len(name) < 3 || len(name) > 63 {
 		return errors.New("bucket name length out of range")
 	}
+	if name == "public" {
+		return errors.New("bucket name is reserved")
+	}
 	if strings.ToLower(name) != name {
 		return errors.New("bucket name must be lowercase")
 	}

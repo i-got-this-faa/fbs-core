@@ -29,6 +29,7 @@ The `fbs-core` backend handles all S3-compatible data operations, disk I/O, and 
 - **Path Sanitization:** Secure handling of object keys to prevent path traversal attacks.
 - **Data Consistency:** Writes data to disk first (`.tmp/UUID` \u2192 rename), then inserts metadata into SQLite. Built-in startup reconciliation to purge orphaned data.
 - **Upload Checksums:** Real-time validation of `Content-MD5` and `x-amz-checksum-*` headers on upload.
+- **Signed Public Reads:** `/public/{bucket}/{key}` is reserved for signed read URLs, so `public` cannot be used as a bucket name.
 
 ## First Run
 

@@ -63,6 +63,13 @@ func (h *ObjectHandlers) CopyObject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	oldDestinationObject, err := h.Objects.GetByKey(r.Context(), destinationBucket, destinationKey)
+	if err != nil && !errors.Is(err, metadata.ErrObjectNotFound) {
+		h.logError("load existing destination object before copy", err, destinationBucket, destinationKey, "")
+		WriteS3Error(w, r, http.StatusInternalServerError, codeInternalError, messageInternalError)
+		return
+	}
+
 	sourceFile, err := h.Storage.Open(r.Context(), sourceObject.StoragePath)
 	if err != nil {
 		mapAuthenticatedStorageReadError(w, r, h, err, sourceObject)
@@ -96,10 +103,17 @@ func (h *ObjectHandlers) CopyObject(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := h.Objects.Create(r.Context(), destinationObject); err != nil {
 		h.logError("create copied object metadata", err, destinationBucket, destinationKey, storagePath)
+		_ = h.Storage.Delete(r.Context(), storagePath)
 		WriteS3Error(w, r, http.StatusInternalServerError, codeInternalError, messageInternalError)
 		return
 	}
 	h.recordActivity(r, "copy_object", destinationBucket, destinationKey, size, destinationObject.ETag)
+
+	if oldDestinationObject != nil && oldDestinationObject.StoragePath != storagePath {
+		if err := h.Storage.Delete(r.Context(), oldDestinationObject.StoragePath); err != nil {
+			h.logError("delete old object backing file after copy", err, destinationBucket, destinationKey, oldDestinationObject.StoragePath)
+		}
+	}
 
 	w.Header().Set("Content-Type", "application/xml")
 	w.Header().Set("ETag", quoteETag(destinationObject.ETag))

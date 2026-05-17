@@ -1,14 +1,12 @@
 package management
 
 import (
-	"bytes"
-	"encoding/json"
 	"errors"
-	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/i-got-this-faa/fbs/internal/auth"
+	"github.com/i-got-this-faa/fbs/internal/responses"
 )
 
 const (
@@ -28,18 +26,8 @@ type errorBody struct {
 	Message string `json:"message"`
 }
 
-func writeJSON(w http.ResponseWriter, statusCode int, payload interface{}) {
-	var body bytes.Buffer
-	if err := json.NewEncoder(&body).Encode(payload); err != nil {
-		http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-		return
-	}
-
-	setJSONHeaders(w)
-	w.WriteHeader(statusCode)
-	if _, err := w.Write(body.Bytes()); err != nil {
-		slog.Warn("write management JSON response", "error", err)
-	}
+func writeJSON(w http.ResponseWriter, statusCode int, payload any) {
+	responses.WriteJSON(w, statusCode, payload, responses.WithNoStore)
 }
 
 func writeError(w http.ResponseWriter, statusCode int, code, message string) {
@@ -76,8 +64,7 @@ func setJSONHeaders(w http.ResponseWriter) {
 }
 
 func setNoStoreHeaders(w http.ResponseWriter) {
-	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Pragma", "no-cache")
+	responses.WithNoStore(w)
 }
 
 func formatTime(t time.Time) string {

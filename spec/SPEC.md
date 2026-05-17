@@ -8,7 +8,7 @@ This system is a self-hosted, lightweight object storage ecosystem. It provides 
 ### 2.1 Core Backend (Go + SQLite)
 - **Role:** Handles all S3-compatible data operations, disk I/O, and exposes the Management API.
 - **Stack:** Go, `chi` router, SQLite (WAL mode).
-- **Storage:** Local File System (`/data/{bucket_name}/{object_key}`), with path sanitization to prevent traversal attacks and safe handling of special characters in object keys.
+- **Storage:** Local File System with opaque per-object backing paths under each bucket directory. Object keys are stored in SQLite metadata, not used as final filenames. Keys are still validated to prevent traversal attacks and unsafe characters.
 - **Performance:** OS Page Cache (`sendfile`), Go Memory LRU Cache for hot SQLite rows. SQLite tuned with `synchronous=NORMAL` and `busy_timeout=5000`.
 - **Authentication:** Dual Mode (AWS SigV4 for SDKs, Bearer Token for homelab/simple, `--dev` flag to bypass). Bearer token secrets stored as SHA-256 hashes, never in plaintext. SigV4 secret keys are stored raw (required for HMAC signature verification) and presented once to the user at creation time.
 
@@ -35,6 +35,7 @@ This system is a self-hosted, lightweight object storage ecosystem. It provides 
 
 ## 4. Data Integrity & Consistency
 - **Write Order:** Data is written to disk first (`.tmp/UUID` → rename), metadata inserted into SQLite second. SQLite is the single source of truth — if a row doesn't exist, the object doesn't exist.
+- **Reserved Paths:** `/public/{bucket}/{key}` is reserved for signed public read URLs, so `public` is not accepted as an S3 bucket name.
 - **Startup Reconciliation:** On server boot, purge incomplete files from `.tmp/` and remove orphaned data files that have no matching SQLite metadata row.
 - **Upload Checksums:** `Content-MD5` and `x-amz-checksum-*` headers are validated on upload using a `TeeReader` hash pipeline. Mismatches reject the upload before metadata is committed.
 - **Stale Multipart Cleanup:** A background goroutine periodically purges multipart uploads older than a configurable TTL (default 24h), reclaiming disk space from abandoned uploads.

@@ -75,7 +75,7 @@ func newObjectTestEnv(t *testing.T) objectTestEnv {
 		t.Fatalf("new storage: %v", err)
 	}
 
-	objectRepo := metadata.NewObjectRepository(db)
+	objectRepo := metadata.NewCachedObjectRepository(metadata.NewObjectRepository(db), metadata.NewMetadataCache(1024*1024))
 	now := time.Date(2026, 4, 30, 12, 0, 0, 0, time.UTC)
 	signer, err := publicread.NewSigner("12345678901234567890123456789012", func() time.Time { return now })
 	if err != nil {
@@ -205,6 +205,24 @@ func TestPutObjectSHA256Checksum(t *testing.T) {
 
 	if resp.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body=%s", resp.Code, resp.Body.String())
+	}
+}
+
+func TestPutObjectSignedPayloadHashMismatch(t *testing.T) {
+	t.Parallel()
+
+	env := newObjectTestEnv(t)
+	resp := env.do(t, http.MethodPut, "/"+env.bucket+"/signed-payload.txt", "actual payload", map[string]string{
+		"X-Amz-Content-SHA256": hexSHA256("different payload"),
+	})
+
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body=%s", resp.Code, resp.Body.String())
+	}
+	assertS3ErrorCode(t, resp.Body.Bytes(), codeBadDigest)
+
+	if _, err := env.objects.GetByKey(context.Background(), env.bucket, "signed-payload.txt"); !errors.Is(err, metadata.ErrObjectNotFound) {
+		t.Fatalf("expected no committed metadata, got %v", err)
 	}
 }
 
@@ -669,6 +687,11 @@ func base64MD5(value string) string {
 func base64SHA256(value string) string {
 	sum := sha256.Sum256([]byte(value))
 	return base64.StdEncoding.EncodeToString(sum[:])
+}
+
+func hexSHA256(value string) string {
+	sum := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(sum[:])
 }
 
 func assertS3ErrorCode(t *testing.T, body []byte, want string) {

@@ -56,6 +56,12 @@ bin/
 coverage.out
 /main
 
+# Local runtime state
+*.db
+*.db-shm
+*.db-wal
+data/
+
 # Rust
 target/
 Cargo.lock

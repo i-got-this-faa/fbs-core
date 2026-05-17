@@ -35,14 +35,14 @@ func DeleteObject(ctx context.Context, repo metadata.ObjectRepository, disk stor
 		return nil, false, err
 	}
 
-	if disk != nil {
-		if err := disk.Delete(ctx, obj.StoragePath); err != nil {
-			return nil, false, err
-		}
-	}
-
 	if err := repo.Delete(ctx, bucketName, key); err != nil {
 		return nil, false, err
+	}
+
+	if disk != nil {
+		if err := disk.Delete(ctx, obj.StoragePath); err != nil {
+			return nil, true, err
+		}
 	}
 
 	return obj, true, nil
@@ -54,16 +54,16 @@ func EmptyBucket(ctx context.Context, repo metadata.ObjectRepository, disk stora
 		return nil, err
 	}
 
+	if err := repo.DeleteAllInBucket(ctx, bucketName); err != nil {
+		return nil, err
+	}
+
 	if disk != nil {
 		for _, obj := range objects {
 			if err := disk.Delete(ctx, obj.StoragePath); err != nil {
-				return nil, err
+				return objects, err
 			}
 		}
-	}
-
-	if err := repo.DeleteAllInBucket(ctx, bucketName); err != nil {
-		return nil, err
 	}
 
 	return objects, nil

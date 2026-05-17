@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -714,7 +715,7 @@ func (h *Handlers) recordActivity(r *http.Request, action, bucketName, key strin
 		actorUserID = principal.UserID
 	}
 
-	_ = h.Activity.Create(r.Context(), &metadata.ObjectActivity{
+	if err := h.Activity.Create(r.Context(), &metadata.ObjectActivity{
 		ID:          uuid.NewString(),
 		Action:      action,
 		BucketName:  bucketName,
@@ -722,5 +723,8 @@ func (h *Handlers) recordActivity(r *http.Request, action, bucketName, key strin
 		Size:        size,
 		ETag:        etag,
 		ActorUserID: actorUserID,
-	})
+		CreatedAt:   time.Now().UTC(),
+	}); err != nil {
+		slog.Warn("record management object activity", "error", err, "bucket", bucketName, "key", key, "action", action)
+	}
 }
