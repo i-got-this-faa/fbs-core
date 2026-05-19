@@ -58,4 +58,8 @@ Management and S3 protected routes accept either `Authorization: Bearer ...` or 
   - `server/`: Server initialization and lifecycle management.
   - `storage/`: Disk storage engine (read, write, delete, path sanitizing, and reconciliation).
 - `migrations/`: SQLite database schemas and migrations.
-- `spec/`: Product specifications, features, and architectural flow diagrams.
+- `docs/`: Completed project documentation for architecture, configuration, APIs, storage, operations, and development.
+
+## Documentation
+
+The detailed project documentation lives in [`docs/README.md`](./docs/README.md). For Docker setup and first S3 operations, start with [`docs/quickstart.md`](./docs/quickstart.md).
