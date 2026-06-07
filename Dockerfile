@@ -1,4 +1,5 @@
-FROM golang:1.26.1-alpine AS build
+# 1. CRITICAL: Add --platform=$BUILDPLATFORM here
+FROM --platform=$BUILDPLATFORM golang:1.26.1-alpine AS build
 
 WORKDIR /src
 
@@ -6,7 +7,13 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/fbs ./cmd/server
+
+
+ARG TARGETOS
+ARG TARGETARCH
+
+
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w" -o /out/fbs ./cmd/server
 
 FROM alpine:3.22
 
