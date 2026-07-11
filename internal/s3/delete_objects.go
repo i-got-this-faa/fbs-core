@@ -51,6 +51,12 @@ func (h *ObjectHandlers) DeleteObjects(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// Deny callers with no relationship to the bucket before per-key auth.
+	// Without this, strangers get 200 + AccessDenied errors and can tell the
+	// bucket exists more cheaply than via other ops' 403 shape consistency.
+	if !h.authorizeBucketRelationship(w, r, bucket) {
+		return
+	}
 
 	req, err := parseDeleteObjectsRequest(r)
 	if err != nil {

@@ -67,6 +67,42 @@ func (h *ObjectHandlers) authorizeQuiet(r *http.Request, action, bucketName, obj
 	})
 }
 
+// authorizeBucketRelationship allows the request only when the principal is an
+// admin, the bucket owner, or holds at least one active grant on the bucket.
+// Callers with no relationship to the bucket get AccessDenied (same top-level
+// deny shape as other handlers), rather than a success-shaped multi-status body.
+func (h *ObjectHandlers) authorizeBucketRelationship(w http.ResponseWriter, r *http.Request, bucket *metadata.Bucket) bool {
+	if bucket == nil {
+		WriteS3Error(w, r, http.StatusForbidden, codeAccessDenied, messageAccessDenied)
+		return false
+	}
+
+	principal, ok := auth.PrincipalFromContext(r.Context())
+	if !ok || strings.TrimSpace(principal.UserID) == "" {
+		WriteS3Error(w, r, http.StatusForbidden, codeAccessDenied, messageAccessDenied)
+		return false
+	}
+	if principal.Role == "admin" || bucket.OwnerID == principal.UserID {
+		return true
+	}
+	if h.Grants == nil {
+		WriteS3Error(w, r, http.StatusForbidden, codeAccessDenied, messageAccessDenied)
+		return false
+	}
+
+	grants, err := h.Grants.ListActiveForGranteeBucket(r.Context(), principal.UserID, bucket.Name)
+	if err != nil {
+		h.logError("list grants for bucket relationship", err, bucket.Name, "", "")
+		WriteS3Error(w, r, http.StatusInternalServerError, codeInternalError, messageInternalError)
+		return false
+	}
+	if len(grants) == 0 {
+		WriteS3Error(w, r, http.StatusForbidden, codeAccessDenied, messageAccessDenied)
+		return false
+	}
+	return true
+}
+
 func (h *ObjectHandlers) evaluator() *authz.Evaluator {
 	if h.Authz != nil {
 		return h.Authz

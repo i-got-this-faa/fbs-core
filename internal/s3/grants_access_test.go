@@ -102,6 +102,82 @@ func TestListBucketsIncludesGrantedBuckets(t *testing.T) {
 	}
 }
 
+func TestDeleteObjectsDeniesStrangerWithoutGrants(t *testing.T) {
+	t.Parallel()
+
+	env := newScopedS3TestEnv(t, auth.Principal{
+		UserID:      "member-user",
+		DisplayName: "Member User",
+		AccessKeyID: "member",
+		Role:        "member",
+	})
+
+	// Member has no grants on other-bucket; multi-delete must be top-level 403,
+	// not 200 with per-key errors.
+	body := `<Delete><Object><Key>any.txt</Key></Object></Delete>`
+	resp := env.do(t, http.MethodPost, "/other-bucket?delete", body, deleteObjectsHeaders(body))
+	if resp.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403; body=%s", resp.Code, resp.Body.String())
+	}
+	assertS3ErrorCode(t, resp.Body.Bytes(), codeAccessDenied)
+}
+
+func TestDeleteObjectsPartialGrantReportsPerKeyErrors(t *testing.T) {
+	t.Parallel()
+
+	env := newScopedS3TestEnv(t, auth.Principal{
+		UserID:      "member-user",
+		DisplayName: "Member User",
+		AccessKeyID: "member",
+		Role:        "member",
+	})
+
+	now := time.Now().UTC()
+	// Relationship to the bucket via a delete grant limited to uploads/.
+	_, _, err := env.grants.CreateIdempotent(context.Background(), &metadata.Grant{
+		ID: uuid.NewString(), BucketName: "other-bucket", GranteeUserID: "member-user",
+		Action: authz.ActionDeleteObject, KeyPrefix: "uploads/", IsActive: true,
+		CreatedAt: now, UpdatedAt: now,
+	})
+	if err != nil {
+		t.Fatalf("create grant: %v", err)
+	}
+
+	// Seed two keys under other-bucket.
+	for _, key := range []string{"uploads/ok.txt", "secret.txt"} {
+		path, size, err := env.storage.Write(context.Background(), "other-bucket", key, strings.NewReader("x"))
+		if err != nil {
+			t.Fatalf("write %s: %v", key, err)
+		}
+		if err := env.objects.Create(context.Background(), &metadata.Object{
+			ID: uuid.NewString(), BucketName: "other-bucket", Key: key,
+			Size: size, ETag: "e", ContentType: "text/plain", StoragePath: path,
+			CreatedAt: now, UpdatedAt: now,
+		}); err != nil {
+			t.Fatalf("create object %s: %v", key, err)
+		}
+	}
+
+	body := `<Delete>
+		<Object><Key>uploads/ok.txt</Key></Object>
+		<Object><Key>secret.txt</Key></Object>
+	</Delete>`
+	resp := env.do(t, http.MethodPost, "/other-bucket?delete", body, deleteObjectsHeaders(body))
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", resp.Code, resp.Body.String())
+	}
+	var result deleteObjectsResult
+	if err := xml.Unmarshal(resp.Body.Bytes(), &result); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(result.Deleted) != 1 || result.Deleted[0].Key != "uploads/ok.txt" {
+		t.Fatalf("deleted = %+v, want uploads/ok.txt", result.Deleted)
+	}
+	if len(result.Errors) != 1 || result.Errors[0].Key != "secret.txt" || result.Errors[0].Code != codeAccessDenied {
+		t.Fatalf("errors = %+v, want secret.txt AccessDenied", result.Errors)
+	}
+}
+
 func TestPrefixLimitedPutDeniedOutsidePrefix(t *testing.T) {
 	t.Parallel()
 
