@@ -5,8 +5,12 @@ import "net/http"
 func (h *ObjectHandlers) DispatchBucketGet(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	switch {
-	case query.Has("versions"), query.Has("acl"), query.Has("cors"), query.Has("policy"), query.Has("uploads"), query.Has("uploadId"):
+	case query.Has("acl"), query.Has("cors"), query.Has("policy"):
 		h.NotImplemented(w, r)
+	case query.Has("versions"):
+		h.ListObjectVersions(w, r)
+	case query.Has("uploads"):
+		h.ListMultipartUploads(w, r)
 	case query.Has("location"):
 		h.GetBucketLocation(w, r)
 	case query.Get("list-type") == "2":
@@ -55,7 +59,15 @@ func (h *ObjectHandlers) DispatchBucketDelete(w http.ResponseWriter, r *http.Req
 
 func (h *ObjectHandlers) DispatchObjectGet(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
-	if query.Has("acl") || query.Has("uploadId") || query.Has("uploads") {
+	if query.Has("uploadId") {
+		h.ListParts(w, r)
+		return
+	}
+	if query.Has("attributes") {
+		h.GetObjectAttributes(w, r)
+		return
+	}
+	if query.Has("acl") || query.Has("uploads") {
 		h.NotImplemented(w, r)
 		return
 	}

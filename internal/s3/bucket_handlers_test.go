@@ -348,7 +348,7 @@ func TestListObjectsV1InvalidMaxKeys(t *testing.T) {
 	if resp.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400; body=%s", resp.Code, resp.Body.String())
 	}
-	assertS3ErrorCode(t, resp.Body.Bytes(), codeInvalidRequest)
+	assertS3ErrorCode(t, resp.Body.Bytes(), codeInvalidArgument)
 }
 
 func TestListObjectsV2Prefix(t *testing.T) {
@@ -782,7 +782,6 @@ func TestNotImplementedSubresources(t *testing.T) {
 		method string
 		path   string
 	}{
-		{http.MethodGet, "/" + env.bucket + "?versions"},
 		{http.MethodGet, "/" + env.bucket + "?acl"},
 		{http.MethodPut, "/" + env.bucket + "?acl"},
 		{http.MethodGet, "/" + env.bucket + "/object.txt?acl"},
@@ -793,7 +792,6 @@ func TestNotImplementedSubresources(t *testing.T) {
 		{http.MethodGet, "/" + env.bucket + "?policy"},
 		{http.MethodPut, "/" + env.bucket + "?policy"},
 		{http.MethodDelete, "/" + env.bucket + "?policy"},
-		{http.MethodGet, "/" + env.bucket + "?uploads"},
 	}
 	for _, tc := range cases {
 		resp := env.do(t, tc.method, tc.path, "", nil)

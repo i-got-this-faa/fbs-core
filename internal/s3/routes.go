@@ -4,6 +4,7 @@ import "github.com/go-chi/chi/v5"
 
 func RegisterBucketRoutes(r chi.Router, h *ObjectHandlers) {
 	r.Get("/", h.ListBuckets)
+	r.Post("/{bucket}", h.DispatchBucketPost)
 	r.Put("/{bucket}", h.DispatchBucketPut)
 	r.Get("/{bucket}", h.DispatchBucketGet)
 	r.Head("/{bucket}", h.HeadBucket)

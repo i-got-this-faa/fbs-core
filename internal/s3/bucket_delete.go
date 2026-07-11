@@ -26,6 +26,26 @@ func (h *ObjectHandlers) DeleteBucket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Abort any pending multipart uploads before deleting the bucket.
+	// S3 allows deleting buckets with pending multipart uploads, but our FK
+	// constraint requires them to be removed first.
+	uploads, _, _, _, listErr := h.MultipartUploads.ListByBucket(r.Context(), bucketName, "", "", "", 1000)
+	if listErr != nil {
+		h.logError("list multipart uploads for bucket deletion", listErr, bucketName, "", "")
+		WriteS3Error(w, r, http.StatusInternalServerError, codeInternalError, messageInternalError)
+		return
+	}
+	for _, upload := range uploads {
+		if delErr := h.MultipartUploads.Delete(r.Context(), upload.ID); delErr != nil {
+			h.logError("delete multipart upload during bucket deletion", delErr, bucketName, upload.Key, upload.ID)
+		}
+		ctx, cancel := withCleanupTimeout()
+		if storErr := h.Storage.DeleteUploadParts(ctx, upload.ID); storErr != nil {
+			h.logError("delete upload parts during bucket deletion", storErr, bucketName, upload.Key, upload.ID)
+		}
+		cancel()
+	}
+
 	err = h.Buckets.Delete(r.Context(), bucketName)
 	if errors.Is(err, metadata.ErrBucketNotFound) {
 		WriteS3Error(w, r, http.StatusNotFound, codeNoSuchBucket, messageNoSuchBucket)

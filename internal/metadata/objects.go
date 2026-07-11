@@ -5,10 +5,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"encoding/json"
 	"time"
 )
 
-// Object represents a row in the objects table.
 type Object struct {
 	ID          string
 	BucketName  string
@@ -19,6 +19,14 @@ type Object struct {
 	StoragePath string
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+	IsMultipart bool
+	PartsCount  int
+	ChecksumCRC32    string
+	ChecksumCRC32C   string
+	ChecksumCRC64NVME string
+	ChecksumSHA1     string
+	ChecksumSHA256   string
+	UserMetadata map[string]string
 }
 
 // DelimitedListEntry is one result row from ListDelimited. VirtualKey holds
@@ -59,11 +67,12 @@ type sqliteObjectRepository struct {
 func NewObjectRepository(db *sql.DB) ObjectRepository {
 	return &sqliteObjectRepository{db: db}
 }
-
 func (r *sqliteObjectRepository) Create(ctx context.Context, obj *Object) error {
 	const q = `
-		INSERT INTO objects (id, bucket_name, key, size, etag, content_type, storage_path, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO objects (id, bucket_name, key, size, etag, content_type, storage_path, created_at, updated_at,
+			is_multipart, parts_count, checksum_crc32, checksum_crc32c, checksum_crc64nvme, checksum_sha1, checksum_sha256, user_metadata)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,
+			?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(bucket_name, key) DO UPDATE SET
 			id = excluded.id,
 			size = excluded.size,
@@ -71,7 +80,15 @@ func (r *sqliteObjectRepository) Create(ctx context.Context, obj *Object) error 
 			content_type = excluded.content_type,
 			storage_path = excluded.storage_path,
 			created_at = excluded.created_at,
-			updated_at = excluded.updated_at`
+			updated_at = excluded.updated_at,
+			is_multipart = excluded.is_multipart,
+			parts_count = excluded.parts_count,
+			checksum_crc32 = excluded.checksum_crc32,
+			checksum_crc32c = excluded.checksum_crc32c,
+			checksum_crc64nvme = excluded.checksum_crc64nvme,
+			checksum_sha1 = excluded.checksum_sha1,
+			checksum_sha256 = excluded.checksum_sha256,
+			user_metadata = excluded.user_metadata`
 
 	if obj.CreatedAt.IsZero() {
 		obj.CreatedAt = time.Now().UTC()
@@ -80,6 +97,16 @@ func (r *sqliteObjectRepository) Create(ctx context.Context, obj *Object) error 
 		obj.UpdatedAt = obj.CreatedAt
 	}
 	now := obj.CreatedAt.UTC()
+
+	var metaStr *string
+	if len(obj.UserMetadata) > 0 {
+		b, err := json.Marshal(obj.UserMetadata)
+		if err != nil {
+			return fmt.Errorf("marshal user metadata: %w", err)
+		}
+		s := string(b)
+		metaStr = &s
+	}
 
 	_, err := r.db.ExecContext(ctx, q,
 		obj.ID,
@@ -91,6 +118,14 @@ func (r *sqliteObjectRepository) Create(ctx context.Context, obj *Object) error 
 		obj.StoragePath,
 		now,
 		obj.UpdatedAt.UTC(),
+		obj.IsMultipart,
+		obj.PartsCount,
+		obj.ChecksumCRC32,
+		obj.ChecksumCRC32C,
+		obj.ChecksumCRC64NVME,
+		obj.ChecksumSHA1,
+		obj.ChecksumSHA256,
+		metaStr,
 	)
 	if err != nil {
 		return fmt.Errorf("create object: %w", err)
@@ -101,7 +136,8 @@ func (r *sqliteObjectRepository) Create(ctx context.Context, obj *Object) error 
 
 func (r *sqliteObjectRepository) GetByKey(ctx context.Context, bucketName, key string) (*Object, error) {
 	const q = `
-		SELECT id, bucket_name, key, size, etag, content_type, storage_path, created_at, updated_at
+		SELECT id, bucket_name, key, size, etag, content_type, storage_path, created_at, updated_at,
+			is_multipart, parts_count, checksum_crc32, checksum_crc32c, checksum_crc64nvme, checksum_sha1, checksum_sha256, user_metadata
 		FROM objects
 		WHERE bucket_name = ? AND key = ?`
 
@@ -113,9 +149,9 @@ func (r *sqliteObjectRepository) List(ctx context.Context, bucketName, prefix, s
 	if maxKeys <= 0 {
 		return []Object{}, false, nil
 	}
-
 	q := `
-		SELECT id, bucket_name, key, size, etag, content_type, storage_path, created_at, updated_at
+		SELECT id, bucket_name, key, size, etag, content_type, storage_path, created_at, updated_at,
+			is_multipart, parts_count, checksum_crc32, checksum_crc32c, checksum_crc64nvme, checksum_sha1, checksum_sha256, user_metadata
 		FROM objects
 		WHERE bucket_name = ? AND key > ?`
 	args := []any{bucketName, startAfter}
@@ -298,14 +334,23 @@ func (r *sqliteObjectRepository) DeleteAllInBucket(ctx context.Context, bucketNa
 func scanObject(row *sql.Row) (*Object, error) {
 	var o Object
 	var createdAt, updatedAt string
+	var metaStr sql.NullString
+	var csCRC32, csCRC32C, csCRC64NVME, csSHA1, csSHA256 sql.NullString
 
-	err := row.Scan(&o.ID, &o.BucketName, &o.Key, &o.Size, &o.ETag, &o.ContentType, &o.StoragePath, &createdAt, &updatedAt)
+	err := row.Scan(&o.ID, &o.BucketName, &o.Key, &o.Size, &o.ETag, &o.ContentType, &o.StoragePath, &createdAt, &updatedAt,
+		&o.IsMultipart, &o.PartsCount, &csCRC32, &csCRC32C, &csCRC64NVME, &csSHA1, &csSHA256, &metaStr)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrObjectNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("scan object: %w", err)
 	}
+
+	o.ChecksumCRC32 = csCRC32.String
+	o.ChecksumCRC32C = csCRC32C.String
+	o.ChecksumCRC64NVME = csCRC64NVME.String
+	o.ChecksumSHA1 = csSHA1.String
+	o.ChecksumSHA256 = csSHA256.String
 
 	o.CreatedAt, err = parseTimestamp(createdAt)
 	if err != nil {
@@ -316,16 +361,31 @@ func scanObject(row *sql.Row) (*Object, error) {
 		return nil, err
 	}
 
+	if metaStr.Valid && metaStr.String != "" {
+		if err := json.Unmarshal([]byte(metaStr.String), &o.UserMetadata); err != nil {
+			return nil, fmt.Errorf("unmarshal user metadata: %w", err)
+		}
+	}
+
 	return &o, nil
 }
 
 func scanObjectRow(rows *sql.Rows) (*Object, error) {
 	var o Object
 	var createdAt, updatedAt string
+	var metaStr sql.NullString
+	var csCRC32, csCRC32C, csCRC64NVME, csSHA1, csSHA256 sql.NullString
 
-	if err := rows.Scan(&o.ID, &o.BucketName, &o.Key, &o.Size, &o.ETag, &o.ContentType, &o.StoragePath, &createdAt, &updatedAt); err != nil {
+	if err := rows.Scan(&o.ID, &o.BucketName, &o.Key, &o.Size, &o.ETag, &o.ContentType, &o.StoragePath, &createdAt, &updatedAt,
+		&o.IsMultipart, &o.PartsCount, &csCRC32, &csCRC32C, &csCRC64NVME, &csSHA1, &csSHA256, &metaStr); err != nil {
 		return nil, fmt.Errorf("scan object row: %w", err)
 	}
+
+	o.ChecksumCRC32 = csCRC32.String
+	o.ChecksumCRC32C = csCRC32C.String
+	o.ChecksumCRC64NVME = csCRC64NVME.String
+	o.ChecksumSHA1 = csSHA1.String
+	o.ChecksumSHA256 = csSHA256.String
 
 	var err error
 	o.CreatedAt, err = parseTimestamp(createdAt)
@@ -337,5 +397,13 @@ func scanObjectRow(rows *sql.Rows) (*Object, error) {
 		return nil, err
 	}
 
+	if metaStr.Valid && metaStr.String != "" {
+		if err := json.Unmarshal([]byte(metaStr.String), &o.UserMetadata); err != nil {
+			return nil, fmt.Errorf("unmarshal user metadata: %w", err)
+		}
+	}
+
 	return &o, nil
 }
+
+
