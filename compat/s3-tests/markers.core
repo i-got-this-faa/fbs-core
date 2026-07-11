@@ -1,0 +1,69 @@
+# Pytest marker expression for a "core data plane" s3-tests run against fbs-core.
+#
+# Non-comment lines are joined with " and " (see run.sh build_marker_expr).
+# Rationale for each clause: compat/s3-tests/markers.md
+# Product scope: plan/s3-compatibility.md, plan/access-control/access-control.md
+#
+# Status tags in comments below:
+#   noise              — not a useful fbs-core signal
+#   permanent non-goal — product law (especially mini-IAM vs AWS IAM)
+#   out of scope       — hard mismatch with single-node / no external services
+#   deferred           — not implemented; may drop this line when the feature ships
+#
+# Mini-IAM grants (Management API) are NOT the same as AWS IAM/policy/STS markers.
+# Shipping grants does not mean removing iam_* / bucket_policy / STS exclusions.
+
+# --- noise ---
+not fails_on_aws
+
+# --- data management (deferred unless noted) ---
+not versioning
+not delete_marker
+not lifecycle
+not lifecycle_expiration
+not lifecycle_transition
+not object_lock
+not tagging
+not storage_class
+not appendobject
+not s3select
+
+# --- AWS access-control protocol (permanent non-goal; see mini-IAM plan) ---
+not bucket_policy
+not object_ownership
+not user_policy
+not role_policy
+not group_policy
+not session_policy
+not iam_role
+not iam_user
+not iam_account
+not iam_cross_account
+not iam_tenant
+not test_of_sts
+not webidentity_test
+not abac_test
+
+# --- encryption (deferred; SSE-KMS authz is non-goal) ---
+not encryption
+not sse_s3
+not bucket_encryption
+
+# --- website (not core data-plane) ---
+not s3website
+not s3website_routing_rules
+not s3website_redirect_location
+
+# --- logging & notifications ---
+not bucket_logging
+not bucket_logging_cleanup
+not fails_without_logging_rollover
+not sns
+
+# --- cloud / S3 Control ---
+not cloud_transition
+not cloud_restore
+not s3control
+
+# --- auth protocol ---
+not auth_aws2

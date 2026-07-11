@@ -1,0 +1,510 @@
+<!DOCTYPE html><html><head><meta charset=utf-8><title>fbs-core S3 checklist</title>
+<style>
+body{font-family:ui-sans-serif,system-ui,sans-serif;max-width:960px;margin:2rem auto;padding:0 1rem;background:#fafafa;color:#111}
+table{border-collapse:collapse;width:100%;background:#fff;margin:1rem 0}
+th,td{border:1px solid #e5e5e5;padding:.45rem .6rem} td.num{text-align:right}
+.pass{color:#0a7}.fail{color:#c22}.err{color:#a60}
+.bar{height:8px;background:#eee;border-radius:4px;overflow:hidden;min-width:90px}
+.bar>span{display:block;height:100%;background:#12a36a}
+details{background:#fff;border:1px solid #e5e5e5;border-radius:8px;padding:.75rem 1rem;margin:.75rem 0}
+summary{cursor:pointer;font-weight:600}
+ul{list-style:none;padding:0} li{font-family:ui-monospace,monospace;font-size:.82rem;padding:.15rem 0;border-bottom:1px solid #f0f0f0}
+.badge{font-size:.75rem;background:#eee;border-radius:999px;padding:.1rem .45rem;margin-left:.4rem}
+</style></head><body>
+<h1>fbs-core S3 compatibility checklist</h1>
+<p>From <code>/tmp/s3-tests-run2.log</code> · 2026-07-10 09:31 UTC</p>
+<p><strong class=pass>150 passed</strong> · <strong class=fail>291 failed</strong> · <strong class=err>2 errors</strong> · 443 selected (33.9%)</p>
+<table><tr><th>Feature</th><th>Pass</th><th>Fail</th><th>Err</th><th>Rate</th><th>Coverage</th></tr>
+<tr><td>Bucket Ops</td><td class='num pass'>13</td><td class='num fail'>5</td><td class='num err'>0</td><td class=num>72%</td><td><div class=bar><span style='width:72.2%'></span></div></td></tr>
+<tr><td>Put / Delete Object</td><td class='num pass'>6</td><td class='num fail'>10</td><td class='num err'>0</td><td class=num>38%</td><td><div class=bar><span style='width:37.5%'></span></div></td></tr>
+<tr><td>Get / Head / Range</td><td class='num pass'>11</td><td class='num fail'>12</td><td class='num err'>0</td><td class=num>48%</td><td><div class=bar><span style='width:47.8%'></span></div></td></tr>
+<tr><td>List Objects</td><td class='num pass'>64</td><td class='num fail'>19</td><td class='num err'>0</td><td class=num>77%</td><td><div class=bar><span style='width:77.1%'></span></div></td></tr>
+<tr><td>Multipart Upload</td><td class='num pass'>3</td><td class='num fail'>38</td><td class='num err'>0</td><td class=num>7%</td><td><div class=bar><span style='width:7.3%'></span></div></td></tr>
+<tr><td>Copy Object</td><td class='num pass'>2</td><td class='num fail'>2</td><td class='num err'>0</td><td class=num>50%</td><td><div class=bar><span style='width:50.0%'></span></div></td></tr>
+<tr><td>Checksums</td><td class='num pass'>0</td><td class='num fail'>4</td><td class='num err'>0</td><td class=num>0%</td><td><div class=bar><span style='width:0.0%'></span></div></td></tr>
+<tr><td>Headers / Auth edge cases</td><td class='num pass'>17</td><td class='num fail'>10</td><td class='num err'>0</td><td class=num>63%</td><td><div class=bar><span style='width:63.0%'></span></div></td></tr>
+<tr><td>Conditional Requests</td><td class='num pass'>0</td><td class='num fail'>2</td><td class='num err'>0</td><td class=num>0%</td><td><div class=bar><span style='width:0.0%'></span></div></td></tr>
+<tr><td>ACL / Public Access</td><td class='num pass'>4</td><td class='num fail'>37</td><td class='num err'>0</td><td class=num>10%</td><td><div class=bar><span style='width:9.8%'></span></div></td></tr>
+<tr><td>Bucket Policy</td><td class='num pass'>0</td><td class='num fail'>7</td><td class='num err'>0</td><td class=num>0%</td><td><div class=bar><span style='width:0.0%'></span></div></td></tr>
+<tr><td>Versioning</td><td class='num pass'>0</td><td class='num fail'>32</td><td class='num err'>0</td><td class=num>0%</td><td><div class=bar><span style='width:0.0%'></span></div></td></tr>
+<tr><td>Object Lock / WORM</td><td class='num pass'>1</td><td class='num fail'>36</td><td class='num err'>0</td><td class=num>3%</td><td><div class=bar><span style='width:2.7%'></span></div></td></tr>
+<tr><td>IAM / STS / OIDC</td><td class='num pass'>0</td><td class='num fail'>0</td><td class='num err'>2</td><td class=num>0%</td><td><div class=bar><span style='width:0.0%'></span></div></td></tr>
+<tr><td>Utils / Misc</td><td class='num pass'>1</td><td class='num fail'>0</td><td class='num err'>0</td><td class=num>100%</td><td><div class=bar><span style='width:100.0%'></span></div></td></tr>
+<tr><td>Other / Uncategorized</td><td class='num pass'>28</td><td class='num fail'>77</td><td class='num err'>0</td><td class=num>27%</td><td><div class=bar><span style='width:26.7%'></span></div></td></tr>
+</table>
+<details open><summary>Bucket Ops <span class=badge>13/18 passed</span></summary><ul>
+<li class=pass>✓ test_bucket_create_delete</li>
+<li class=pass>✓ test_bucket_create_naming_bad_short_one</li>
+<li class=pass>✓ test_bucket_create_naming_bad_short_two</li>
+<li class=pass>✓ test_bucket_create_naming_good_contains_hyphen</li>
+<li class=pass>✓ test_bucket_create_naming_good_contains_period</li>
+<li class=pass>✓ test_bucket_create_naming_good_long_63</li>
+<li class=pass>✓ test_bucket_create_naming_good_starts_alpha</li>
+<li class=pass>✓ test_bucket_create_naming_good_starts_digit</li>
+<li class=pass>✓ test_bucket_delete_nonempty</li>
+<li class=pass>✓ test_bucket_delete_notexist</li>
+<li class=pass>✓ test_bucket_head</li>
+<li class=pass>✓ test_bucket_head_notexist</li>
+<li class=pass>✓ test_bucket_notexist</li>
+<li class=fail>○ test_bucket_create_exists</li>
+<li class=fail>○ test_bucket_create_exists_nonowner</li>
+<li class=fail>○ test_bucket_create_special_key_names</li>
+<li class=fail>○ test_bucket_get_location</li>
+<li class=fail>○ test_bucket_recreate_not_overriding</li>
+</ul></details>
+<details open><summary>Put / Delete Object <span class=badge>6/16 passed</span></summary><ul>
+<li class=pass>✓ test_multi_object_delete</li>
+<li class=pass>✓ test_multi_object_delete_key_limit</li>
+<li class=pass>✓ test_object_write_check_etag</li>
+<li class=pass>✓ test_object_write_file</li>
+<li class=pass>✓ test_object_write_read_update_read_delete</li>
+<li class=pass>✓ test_object_write_to_nonexist_bucket</li>
+<li class=fail>○ test_cors_presigned_put_object</li>
+<li class=fail>○ test_cors_presigned_put_object_tenant</li>
+<li class=fail>○ test_cors_presigned_put_object_tenant_v2</li>
+<li class=fail>○ test_cors_presigned_put_object_v2</li>
+<li class=fail>○ test_object_delete_key_bucket_gone</li>
+<li class=fail>○ test_object_write_cache_control</li>
+<li class=fail>○ test_object_write_expires</li>
+<li class=fail>○ test_put_object_current_if_match</li>
+<li class=fail>○ test_put_object_if_match</li>
+<li class=fail>○ test_put_object_ifmatch_failed</li>
+</ul></details>
+<details open><summary>Get / Head / Range <span class=badge>11/23 passed</span></summary><ul>
+<li class=pass>✓ test_get_object_ifmatch_good</li>
+<li class=pass>✓ test_get_object_ifmodifiedsince_failed</li>
+<li class=pass>✓ test_get_object_ifmodifiedsince_good</li>
+<li class=pass>✓ test_get_object_ifnonematch_failed</li>
+<li class=pass>✓ test_get_object_ifnonematch_good</li>
+<li class=pass>✓ test_get_object_ifunmodifiedsince_failed</li>
+<li class=pass>✓ test_object_read_not_exist</li>
+<li class=pass>✓ test_ranged_big_request_response_code</li>
+<li class=pass>✓ test_ranged_request_response_code</li>
+<li class=pass>✓ test_ranged_request_return_trailing_bytes_response_code</li>
+<li class=pass>✓ test_ranged_request_skip_leading_bytes_response_code</li>
+<li class=fail>○ test_cors_presigned_get_object</li>
+<li class=fail>○ test_cors_presigned_get_object_tenant</li>
+<li class=fail>○ test_cors_presigned_get_object_tenant_v2</li>
+<li class=fail>○ test_cors_presigned_get_object_v2</li>
+<li class=fail>○ test_get_object_attributes</li>
+<li class=fail>○ test_get_object_ifmatch_failed</li>
+<li class=fail>○ test_get_object_ifunmodifiedsince_good</li>
+<li class=fail>○ test_get_object_torrent</li>
+<li class=fail>○ test_object_raw_get_object_gone</li>
+<li class=fail>○ test_object_read_unreadable</li>
+<li class=fail>○ test_ranged_request_empty_object</li>
+<li class=fail>○ test_ranged_request_invalid_range</li>
+</ul></details>
+<details open><summary>List Objects <span class=badge>64/83 passed</span></summary><ul>
+<li class=pass>✓ test_basic_key_count</li>
+<li class=pass>✓ test_bucket_list_delimiter_alt</li>
+<li class=pass>✓ test_bucket_list_delimiter_basic</li>
+<li class=pass>✓ test_bucket_list_delimiter_dot</li>
+<li class=pass>✓ test_bucket_list_delimiter_empty</li>
+<li class=pass>✓ test_bucket_list_delimiter_none</li>
+<li class=pass>✓ test_bucket_list_delimiter_not_exist</li>
+<li class=pass>✓ test_bucket_list_delimiter_percentage</li>
+<li class=pass>✓ test_bucket_list_delimiter_unreadable</li>
+<li class=pass>✓ test_bucket_list_delimiter_whitespace</li>
+<li class=pass>✓ test_bucket_list_distinct</li>
+<li class=pass>✓ test_bucket_list_empty</li>
+<li class=pass>✓ test_bucket_list_many</li>
+<li class=pass>✓ test_bucket_list_marker_after_list</li>
+<li class=pass>✓ test_bucket_list_marker_empty</li>
+<li class=pass>✓ test_bucket_list_marker_none</li>
+<li class=pass>✓ test_bucket_list_marker_not_in_list</li>
+<li class=pass>✓ test_bucket_list_marker_unreadable</li>
+<li class=pass>✓ test_bucket_list_maxkeys_none</li>
+<li class=pass>✓ test_bucket_list_maxkeys_one</li>
+<li class=pass>✓ test_bucket_list_maxkeys_zero</li>
+<li class=pass>✓ test_bucket_list_prefix_alt</li>
+<li class=pass>✓ test_bucket_list_prefix_delimiter_alt</li>
+<li class=pass>✓ test_bucket_list_prefix_delimiter_delimiter_not_exist</li>
+<li class=pass>✓ test_bucket_list_prefix_delimiter_prefix_delimiter_not_exist</li>
+<li class=pass>✓ test_bucket_list_prefix_delimiter_prefix_not_exist</li>
+<li class=pass>✓ test_bucket_list_prefix_empty</li>
+<li class=pass>✓ test_bucket_list_prefix_none</li>
+<li class=pass>✓ test_bucket_list_prefix_not_exist</li>
+<li class=pass>✓ test_bucket_list_special_prefix</li>
+<li class=pass>✓ test_bucket_listv2_both_continuationtoken_startafter</li>
+<li class=pass>✓ test_bucket_listv2_delimiter_alt</li>
+<li class=pass>✓ test_bucket_listv2_delimiter_basic</li>
+<li class=pass>✓ test_bucket_listv2_delimiter_dot</li>
+<li class=pass>✓ test_bucket_listv2_delimiter_empty</li>
+<li class=pass>✓ test_bucket_listv2_delimiter_none</li>
+<li class=pass>✓ test_bucket_listv2_delimiter_not_exist</li>
+<li class=pass>✓ test_bucket_listv2_delimiter_percentage</li>
+<li class=pass>✓ test_bucket_listv2_delimiter_prefix</li>
+<li class=pass>✓ test_bucket_listv2_delimiter_prefix_ends_with_delimiter</li>
+<li class=pass>✓ test_bucket_listv2_delimiter_prefix_underscore</li>
+<li class=pass>✓ test_bucket_listv2_delimiter_unreadable</li>
+<li class=pass>✓ test_bucket_listv2_delimiter_whitespace</li>
+<li class=pass>✓ test_bucket_listv2_fetchowner_defaultempty</li>
+<li class=pass>✓ test_bucket_listv2_fetchowner_empty</li>
+<li class=pass>✓ test_bucket_listv2_many</li>
+<li class=pass>✓ test_bucket_listv2_maxkeys_none</li>
+<li class=pass>✓ test_bucket_listv2_maxkeys_one</li>
+<li class=pass>✓ test_bucket_listv2_maxkeys_zero</li>
+<li class=pass>✓ test_bucket_listv2_prefix_alt</li>
+<li class=pass>✓ test_bucket_listv2_prefix_basic</li>
+<li class=pass>✓ test_bucket_listv2_prefix_delimiter_alt</li>
+<li class=pass>✓ test_bucket_listv2_prefix_delimiter_basic</li>
+<li class=pass>✓ test_bucket_listv2_prefix_delimiter_delimiter_not_exist</li>
+<li class=pass>✓ test_bucket_listv2_prefix_delimiter_prefix_delimiter_not_exist</li>
+<li class=pass>✓ test_bucket_listv2_prefix_delimiter_prefix_not_exist</li>
+<li class=pass>✓ test_bucket_listv2_prefix_empty</li>
+<li class=pass>✓ test_bucket_listv2_prefix_none</li>
+<li class=pass>✓ test_bucket_listv2_prefix_not_exist</li>
+<li class=pass>✓ test_bucket_listv2_prefix_unreadable</li>
+<li class=pass>✓ test_bucket_listv2_startafter_after_list</li>
+<li class=pass>✓ test_bucket_listv2_startafter_not_in_list</li>
+<li class=pass>✓ test_bucket_listv2_startafter_unreadable</li>
+<li class=pass>✓ test_object_write_with_chunked_transfer_encoding</li>
+<li class=fail>○ test_bucket_list_delimiter_not_skip_special</li>
+<li class=fail>○ test_bucket_list_delimiter_prefix</li>
+<li class=fail>○ test_bucket_list_delimiter_prefix_ends_with_delimiter</li>
+<li class=fail>○ test_bucket_list_delimiter_prefix_underscore</li>
+<li class=fail>○ test_bucket_list_encoding_basic</li>
+<li class=fail>○ test_bucket_list_maxkeys_invalid</li>
+<li class=fail>○ test_bucket_list_objects_anonymous</li>
+<li class=fail>○ test_bucket_list_objects_anonymous_fail</li>
+<li class=fail>○ test_bucket_list_prefix_basic</li>
+<li class=fail>○ test_bucket_list_prefix_delimiter_basic</li>
+<li class=fail>○ test_bucket_list_prefix_unreadable</li>
+<li class=fail>○ test_bucket_list_return_data</li>
+<li class=fail>○ test_bucket_listv2_continuationtoken</li>
+<li class=fail>○ test_bucket_listv2_continuationtoken_empty</li>
+<li class=fail>○ test_bucket_listv2_encoding_basic</li>
+<li class=fail>○ test_bucket_listv2_fetchowner_notempty</li>
+<li class=fail>○ test_bucket_listv2_objects_anonymous</li>
+<li class=fail>○ test_bucket_listv2_objects_anonymous_fail</li>
+<li class=fail>○ test_object_content_encoding_aws_chunked</li>
+</ul></details>
+<details open><summary>Multipart Upload <span class=badge>3/41 passed</span></summary><ul>
+<li class=pass>✓ test_abort_multipart_upload</li>
+<li class=pass>✓ test_abort_multipart_upload_not_found</li>
+<li class=pass>✓ test_atomic_multipart_upload_write</li>
+<li class=fail>○ test_get_multipart_checksum_object_attributes</li>
+<li class=fail>○ test_get_multipart_object_attributes</li>
+<li class=fail>○ test_get_paginated_multipart_object_attributes</li>
+<li class=fail>○ test_get_single_multipart_object_attributes</li>
+<li class=fail>○ test_list_multipart_upload</li>
+<li class=fail>○ test_list_multipart_upload_owner</li>
+<li class=fail>○ test_multipart_checksum_sha256</li>
+<li class=fail>○ test_multipart_copy_improper_range</li>
+<li class=fail>○ test_multipart_copy_invalid_range</li>
+<li class=fail>○ test_multipart_copy_multiple_sizes</li>
+<li class=fail>○ test_multipart_copy_small</li>
+<li class=fail>○ test_multipart_copy_special_names</li>
+<li class=fail>○ test_multipart_copy_without_range</li>
+<li class=fail>○ test_multipart_get_part</li>
+<li class=fail>○ test_multipart_put_current_object_if_match</li>
+<li class=fail>○ test_multipart_put_current_object_if_none_match</li>
+<li class=fail>○ test_multipart_put_object_if_match</li>
+<li class=fail>○ test_multipart_resend_first_finishes_last</li>
+<li class=fail>○ test_multipart_reupload_checksum_and_etag</li>
+<li class=fail>○ test_multipart_single_get_part</li>
+<li class=fail>○ test_multipart_upload</li>
+<li class=fail>○ test_multipart_upload_complete_without_create</li>
+<li class=fail>○ test_multipart_upload_contents</li>
+<li class=fail>○ test_multipart_upload_empty</li>
+<li class=fail>○ test_multipart_upload_incorrect_etag</li>
+<li class=fail>○ test_multipart_upload_missing_part</li>
+<li class=fail>○ test_multipart_upload_multiple_sizes</li>
+<li class=fail>○ test_multipart_upload_overwrite_existing_object</li>
+<li class=fail>○ test_multipart_upload_resend_part</li>
+<li class=fail>○ test_multipart_upload_size_too_small</li>
+<li class=fail>○ test_multipart_upload_small</li>
+<li class=fail>○ test_multipart_use_cksum_helper_crc32</li>
+<li class=fail>○ test_multipart_use_cksum_helper_crc32c</li>
+<li class=fail>○ test_multipart_use_cksum_helper_crc64nvme</li>
+<li class=fail>○ test_multipart_use_cksum_helper_sha1</li>
+<li class=fail>○ test_multipart_use_cksum_helper_sha256</li>
+<li class=fail>○ test_non_multipart_get_part</li>
+<li class=fail>○ test_upload_part_copy_percent_encoded_key</li>
+</ul></details>
+<details open><summary>Copy Object <span class=badge>2/4 passed</span></summary><ul>
+<li class=pass>✓ test_copy_object_ifmatch_good</li>
+<li class=pass>✓ test_copy_object_ifnonematch_failed</li>
+<li class=fail>○ test_copy_object_ifmatch_failed</li>
+<li class=fail>○ test_copy_object_ifnonematch_good</li>
+</ul></details>
+<details open><summary>Checksums <span class=badge>0/4 passed</span></summary><ul>
+<li class=fail>○ test_get_checksum_object_attributes</li>
+<li class=fail>○ test_object_checksum_crc64nvme</li>
+<li class=fail>○ test_object_checksum_sha256</li>
+<li class=fail>○ test_post_object_upload_checksum</li>
+</ul></details>
+<details open><summary>Headers / Auth edge cases <span class=badge>17/27 passed</span></summary><ul>
+<li class=pass>✓ test_bucket_create_bad_contentlength_empty</li>
+<li class=pass>✓ test_bucket_create_bad_contentlength_negative</li>
+<li class=pass>✓ test_bucket_create_bad_contentlength_none</li>
+<li class=pass>✓ test_bucket_create_bad_expect_empty</li>
+<li class=pass>✓ test_bucket_create_contentlength_none</li>
+<li class=pass>✓ test_object_create_amz_date_and_no_date</li>
+<li class=pass>✓ test_object_create_bad_contentlength_empty</li>
+<li class=pass>✓ test_object_create_bad_contentlength_negative</li>
+<li class=pass>✓ test_object_create_bad_contenttype_empty</li>
+<li class=pass>✓ test_object_create_bad_contenttype_invalid</li>
+<li class=pass>✓ test_object_create_bad_contenttype_none</li>
+<li class=pass>✓ test_object_create_bad_expect_empty</li>
+<li class=pass>✓ test_object_create_bad_expect_none</li>
+<li class=pass>✓ test_object_create_bad_md5_bad</li>
+<li class=pass>✓ test_object_create_bad_md5_invalid_short</li>
+<li class=pass>✓ test_object_create_bad_md5_none</li>
+<li class=pass>✓ test_object_create_date_and_amz_date</li>
+<li class=fail>○ test_bucket_create_bad_authorization_empty</li>
+<li class=fail>○ test_bucket_create_bad_authorization_none</li>
+<li class=fail>○ test_bucket_create_bad_expect_mismatch</li>
+<li class=fail>○ test_bucket_put_bad_canned_acl</li>
+<li class=fail>○ test_object_acl_create_contentlength_none</li>
+<li class=fail>○ test_object_create_bad_authorization_empty</li>
+<li class=fail>○ test_object_create_bad_authorization_none</li>
+<li class=fail>○ test_object_create_bad_contentlength_none</li>
+<li class=fail>○ test_object_create_bad_expect_mismatch</li>
+<li class=fail>○ test_object_create_bad_md5_empty</li>
+</ul></details>
+<details open><summary>Conditional Requests <span class=badge>0/2 passed</span></summary><ul>
+<li class=fail>○ test_put_current_object_if_match</li>
+<li class=fail>○ test_put_current_object_if_none_match</li>
+</ul></details>
+<details open><summary>ACL / Public Access <span class=badge>4/41 passed</span></summary><ul>
+<li class=pass>✓ test_object_presigned_put_object_with_acl</li>
+<li class=pass>✓ test_object_presigned_put_object_with_acl_tenant</li>
+<li class=pass>✓ test_object_raw_authenticated_bucket_acl</li>
+<li class=pass>✓ test_object_raw_authenticated_object_acl</li>
+<li class=fail>○ test_block_public_object_canned_acls</li>
+<li class=fail>○ test_block_public_put_bucket_acls</li>
+<li class=fail>○ test_bucket_acl_canned</li>
+<li class=fail>○ test_bucket_acl_canned_authenticatedread</li>
+<li class=fail>○ test_bucket_acl_canned_private_to_private</li>
+<li class=fail>○ test_bucket_acl_canned_publicreadwrite</li>
+<li class=fail>○ test_bucket_acl_default</li>
+<li class=fail>○ test_bucket_acl_grant_email_not_exist</li>
+<li class=fail>○ test_bucket_acl_grant_nonexist_user</li>
+<li class=fail>○ test_bucket_acl_revoke_all</li>
+<li class=fail>○ test_bucket_concurrent_set_canned_acl</li>
+<li class=fail>○ test_bucket_recreate_new_acl</li>
+<li class=fail>○ test_bucket_recreate_overwrite_acl</li>
+<li class=fail>○ test_cors_presigned_put_object_tenant_with_acl</li>
+<li class=fail>○ test_cors_presigned_put_object_with_acl</li>
+<li class=fail>○ test_get_authpublic_acl_bucket_policy_status</li>
+<li class=fail>○ test_get_nonpublicpolicy_acl_bucket_policy_status</li>
+<li class=fail>○ test_get_public_acl_bucket_policy_status</li>
+<li class=fail>○ test_get_public_block_deny_bucket_policy</li>
+<li class=fail>○ test_get_publicpolicy_acl_bucket_policy_status</li>
+<li class=fail>○ test_get_undefined_public_block</li>
+<li class=fail>○ test_ignore_public_acls</li>
+<li class=fail>○ test_object_acl_canned</li>
+<li class=fail>○ test_object_acl_canned_authenticatedread</li>
+<li class=fail>○ test_object_acl_canned_bucketownerfullcontrol</li>
+<li class=fail>○ test_object_acl_canned_bucketownerread</li>
+<li class=fail>○ test_object_acl_canned_during_create</li>
+<li class=fail>○ test_object_acl_canned_publicreadwrite</li>
+<li class=fail>○ test_object_acl_default</li>
+<li class=fail>○ test_object_acl_full_control_verify_attributes</li>
+<li class=fail>○ test_object_copy_canned_acl</li>
+<li class=fail>○ test_object_put_acl_mtime</li>
+<li class=fail>○ test_object_raw_get_bucket_acl</li>
+<li class=fail>○ test_object_raw_get_object_acl</li>
+<li class=fail>○ test_put_bucket_acl_grant_group_read</li>
+<li class=fail>○ test_put_get_delete_public_block</li>
+<li class=fail>○ test_put_public_block</li>
+</ul></details>
+<details open><summary>Bucket Policy <span class=badge>0/7 passed</span></summary><ul>
+<li class=fail>○ test_block_public_policy</li>
+<li class=fail>○ test_block_public_policy_with_principal</li>
+<li class=fail>○ test_bucket_policy_allow_notprincipal</li>
+<li class=fail>○ test_get_bucket_policy_status</li>
+<li class=fail>○ test_get_nonpublicpolicy_principal_bucket_policy_status</li>
+<li class=fail>○ test_head_object_404_with_policy_prefix</li>
+<li class=fail>○ test_multipart_upload_on_a_bucket_with_policy</li>
+</ul></details>
+<details open><summary>Versioning <span class=badge>0/32 passed</span></summary><ul>
+<li class=fail>○ test_bucket_list_return_data_versioning</li>
+<li class=fail>○ test_get_versioned_object_attributes</li>
+<li class=fail>○ test_multipart_copy_versioned</li>
+<li class=fail>○ test_object_copy_versioned_bucket</li>
+<li class=fail>○ test_object_copy_versioned_url_encoding</li>
+<li class=fail>○ test_object_copy_versioning_multipart_upload</li>
+<li class=fail>○ test_object_lock_put_obj_retention_versionid</li>
+<li class=fail>○ test_object_lock_suspend_versioning</li>
+<li class=fail>○ test_versioned_concurrent_object_create_and_remove</li>
+<li class=fail>○ test_versioned_concurrent_object_create_concurrent_remove</li>
+<li class=fail>○ test_versioned_object_acl</li>
+<li class=fail>○ test_versioned_object_acl_no_version_specified</li>
+<li class=fail>○ test_versioning_bucket_atomic_upload_return_version_id</li>
+<li class=fail>○ test_versioning_bucket_create_suspend</li>
+<li class=fail>○ test_versioning_bucket_multipart_upload_return_version_id</li>
+<li class=fail>○ test_versioning_concurrent_multi_object_delete</li>
+<li class=fail>○ test_versioning_copy_obj_version</li>
+<li class=fail>○ test_versioning_multi_object_delete</li>
+<li class=fail>○ test_versioning_multi_object_delete_with_marker</li>
+<li class=fail>○ test_versioning_multi_object_delete_with_marker_create</li>
+<li class=fail>○ test_versioning_obj_create_overwrite_multipart</li>
+<li class=fail>○ test_versioning_obj_create_read_remove</li>
+<li class=fail>○ test_versioning_obj_create_read_remove_head</li>
+<li class=fail>○ test_versioning_obj_create_versions_remove_all</li>
+<li class=fail>○ test_versioning_obj_create_versions_remove_special_names</li>
+<li class=fail>○ test_versioning_obj_list_marker</li>
+<li class=fail>○ test_versioning_obj_plain_null_version_overwrite</li>
+<li class=fail>○ test_versioning_obj_plain_null_version_overwrite_suspended</li>
+<li class=fail>○ test_versioning_obj_plain_null_version_removal</li>
+<li class=fail>○ test_versioning_obj_suspend_versions</li>
+<li class=fail>○ test_versioning_obj_suspended_copy</li>
+<li class=fail>○ test_versioning_stack_delete_merkers</li>
+</ul></details>
+<details open><summary>Object Lock / WORM <span class=badge>1/37 passed</span></summary><ul>
+<li class=pass>✓ test_object_lock_changing_mode_from_governance_with_bypass</li>
+<li class=fail>○ test_object_lock_changing_mode_from_compliance</li>
+<li class=fail>○ test_object_lock_changing_mode_from_governance_without_bypass</li>
+<li class=fail>○ test_object_lock_delete_multipart_object_with_legal_hold_on</li>
+<li class=fail>○ test_object_lock_delete_multipart_object_with_retention</li>
+<li class=fail>○ test_object_lock_delete_object_with_legal_hold_off</li>
+<li class=fail>○ test_object_lock_delete_object_with_legal_hold_on</li>
+<li class=fail>○ test_object_lock_delete_object_with_retention</li>
+<li class=fail>○ test_object_lock_delete_object_with_retention_and_marker</li>
+<li class=fail>○ test_object_lock_get_legal_hold</li>
+<li class=fail>○ test_object_lock_get_legal_hold_invalid_bucket</li>
+<li class=fail>○ test_object_lock_get_obj_lock</li>
+<li class=fail>○ test_object_lock_get_obj_lock_invalid_bucket</li>
+<li class=fail>○ test_object_lock_get_obj_metadata</li>
+<li class=fail>○ test_object_lock_get_obj_retention</li>
+<li class=fail>○ test_object_lock_get_obj_retention_invalid_bucket</li>
+<li class=fail>○ test_object_lock_get_obj_retention_iso8601</li>
+<li class=fail>○ test_object_lock_multi_delete_object_with_retention</li>
+<li class=fail>○ test_object_lock_put_legal_hold</li>
+<li class=fail>○ test_object_lock_put_legal_hold_invalid_bucket</li>
+<li class=fail>○ test_object_lock_put_legal_hold_invalid_status</li>
+<li class=fail>○ test_object_lock_put_obj_lock</li>
+<li class=fail>○ test_object_lock_put_obj_lock_enable_after_create</li>
+<li class=fail>○ test_object_lock_put_obj_lock_invalid_bucket</li>
+<li class=fail>○ test_object_lock_put_obj_lock_invalid_days</li>
+<li class=fail>○ test_object_lock_put_obj_lock_invalid_mode</li>
+<li class=fail>○ test_object_lock_put_obj_lock_invalid_status</li>
+<li class=fail>○ test_object_lock_put_obj_lock_invalid_years</li>
+<li class=fail>○ test_object_lock_put_obj_lock_with_days_and_years</li>
+<li class=fail>○ test_object_lock_put_obj_retention</li>
+<li class=fail>○ test_object_lock_put_obj_retention_increase_period</li>
+<li class=fail>○ test_object_lock_put_obj_retention_invalid_bucket</li>
+<li class=fail>○ test_object_lock_put_obj_retention_invalid_mode</li>
+<li class=fail>○ test_object_lock_put_obj_retention_override_default_retention</li>
+<li class=fail>○ test_object_lock_put_obj_retention_shorten_period</li>
+<li class=fail>○ test_object_lock_put_obj_retention_shorten_period_bypass</li>
+<li class=fail>○ test_object_lock_uploading_obj</li>
+</ul></details>
+<details open><summary>IAM / STS / OIDC <span class=badge>0/2 passed</span></summary><ul>
+<li class=err>! test_verify_add_existing_client_id_to_oidc</li>
+<li class=err>! test_verify_update_thumbprintlist_of_oidc</li>
+</ul></details>
+<details open><summary>Utils / Misc <span class=badge>1/1 passed</span></summary><ul>
+<li class=pass>✓ test_generate</li>
+</ul></details>
+<details open><summary>Other / Uncategorized <span class=badge>28/105 passed</span></summary><ul>
+<li class=pass>✓ test_atomic_dual_write_1mb</li>
+<li class=pass>✓ test_atomic_dual_write_4mb</li>
+<li class=pass>✓ test_atomic_dual_write_8mb</li>
+<li class=pass>✓ test_atomic_read_1mb</li>
+<li class=pass>✓ test_atomic_read_4mb</li>
+<li class=pass>✓ test_atomic_read_8mb</li>
+<li class=pass>✓ test_atomic_write_1mb</li>
+<li class=pass>✓ test_atomic_write_4mb</li>
+<li class=pass>✓ test_atomic_write_8mb</li>
+<li class=pass>✓ test_buckets_create_then_list</li>
+<li class=pass>✓ test_buckets_list_ctime</li>
+<li class=pass>✓ test_bucketv2_notexist</li>
+<li class=pass>✓ test_multi_objectv2_delete</li>
+<li class=pass>✓ test_multi_objectv2_delete_key_limit</li>
+<li class=pass>✓ test_object_copy_16m</li>
+<li class=pass>✓ test_object_copy_bucket_not_found</li>
+<li class=pass>✓ test_object_copy_diff_bucket</li>
+<li class=pass>✓ test_object_copy_key_not_found</li>
+<li class=pass>✓ test_object_copy_not_owned_bucket</li>
+<li class=pass>✓ test_object_copy_same_bucket</li>
+<li class=pass>✓ test_object_copy_verify_contenttype</li>
+<li class=pass>✓ test_object_copy_zero_size</li>
+<li class=pass>✓ test_object_head_zero_bytes</li>
+<li class=pass>✓ test_object_metadata_replaced_on_put</li>
+<li class=pass>✓ test_object_put_authenticated</li>
+<li class=pass>✓ test_object_raw_authenticated</li>
+<li class=pass>✓ test_object_raw_authenticated_bucket_gone</li>
+<li class=pass>✓ test_object_raw_authenticated_object_gone</li>
+<li class=fail>○ test_100_continue</li>
+<li class=fail>○ test_100_continue_error_retry</li>
+<li class=fail>○ test_access_bucket_private_object_private</li>
+<li class=fail>○ test_access_bucket_private_object_publicread</li>
+<li class=fail>○ test_access_bucket_private_object_publicreadwrite</li>
+<li class=fail>○ test_access_bucket_private_objectv2_private</li>
+<li class=fail>○ test_access_bucket_private_objectv2_publicread</li>
+<li class=fail>○ test_access_bucket_private_objectv2_publicreadwrite</li>
+<li class=fail>○ test_access_bucket_publicread_object_private</li>
+<li class=fail>○ test_access_bucket_publicread_object_publicread</li>
+<li class=fail>○ test_access_bucket_publicread_object_publicreadwrite</li>
+<li class=fail>○ test_access_bucket_publicreadwrite_object_private</li>
+<li class=fail>○ test_access_bucket_publicreadwrite_object_publicread</li>
+<li class=fail>○ test_access_bucket_publicreadwrite_object_publicreadwrite</li>
+<li class=fail>○ test_block_public_restrict_public_buckets</li>
+<li class=fail>○ test_cors_header_option</li>
+<li class=fail>○ test_cors_origin_response</li>
+<li class=fail>○ test_cors_origin_wildcard</li>
+<li class=fail>○ test_expected_bucket_owner</li>
+<li class=fail>○ test_list_buckets_bad_auth</li>
+<li class=fail>○ test_list_buckets_invalid_auth</li>
+<li class=fail>○ test_list_buckets_paginated</li>
+<li class=fail>○ test_object_anon_put</li>
+<li class=fail>○ test_object_anon_put_write_access</li>
+<li class=fail>○ test_object_copy_not_owned_object_bucket</li>
+<li class=fail>○ test_object_copy_replacing_metadata</li>
+<li class=fail>○ test_object_copy_retaining_metadata</li>
+<li class=fail>○ test_object_copy_to_itself</li>
+<li class=fail>○ test_object_copy_to_itself_with_metadata</li>
+<li class=fail>○ test_object_raw_get</li>
+<li class=fail>○ test_object_raw_get_bucket_gone</li>
+<li class=fail>○ test_object_raw_get_x_amz_expires_not_expired</li>
+<li class=fail>○ test_object_raw_get_x_amz_expires_not_expired_tenant</li>
+<li class=fail>○ test_object_raw_get_x_amz_expires_out_max_range</li>
+<li class=fail>○ test_object_raw_get_x_amz_expires_out_positive_range</li>
+<li class=fail>○ test_object_raw_get_x_amz_expires_out_range_zero</li>
+<li class=fail>○ test_object_raw_put_authenticated_expired</li>
+<li class=fail>○ test_object_raw_response_headers</li>
+<li class=fail>○ test_object_requestid_matches_header_on_error</li>
+<li class=fail>○ test_object_set_get_metadata_none_to_empty</li>
+<li class=fail>○ test_object_set_get_metadata_none_to_good</li>
+<li class=fail>○ test_object_set_get_metadata_overwrite_to_empty</li>
+<li class=fail>○ test_object_set_get_unicode_metadata</li>
+<li class=fail>○ test_post_object_anonymous_request</li>
+<li class=fail>○ test_post_object_authenticated_no_content_type</li>
+<li class=fail>○ test_post_object_authenticated_request</li>
+<li class=fail>○ test_post_object_authenticated_request_bad_access_key</li>
+<li class=fail>○ test_post_object_case_insensitive_condition_fields</li>
+<li class=fail>○ test_post_object_condition_is_case_sensitive</li>
+<li class=fail>○ test_post_object_empty_conditions</li>
+<li class=fail>○ test_post_object_escaped_field_values</li>
+<li class=fail>○ test_post_object_expired_policy</li>
+<li class=fail>○ test_post_object_expires_is_case_sensitive</li>
+<li class=fail>○ test_post_object_ignored_header</li>
+<li class=fail>○ test_post_object_invalid_access_key</li>
+<li class=fail>○ test_post_object_invalid_content_length_argument</li>
+<li class=fail>○ test_post_object_invalid_date_format</li>
+<li class=fail>○ test_post_object_invalid_request_field_value</li>
+<li class=fail>○ test_post_object_invalid_signature</li>
+<li class=fail>○ test_post_object_missing_conditions_list</li>
+<li class=fail>○ test_post_object_missing_content_length_argument</li>
+<li class=fail>○ test_post_object_missing_expires_condition</li>
+<li class=fail>○ test_post_object_missing_policy_condition</li>
+<li class=fail>○ test_post_object_missing_signature</li>
+<li class=fail>○ test_post_object_no_key_specified</li>
+<li class=fail>○ test_post_object_request_missing_policy_specified_field</li>
+<li class=fail>○ test_post_object_set_invalid_success_code</li>
+<li class=fail>○ test_post_object_set_key_from_filename</li>
+<li class=fail>○ test_post_object_set_success_code</li>
+<li class=fail>○ test_post_object_success_redirect_action</li>
+<li class=fail>○ test_post_object_upload_larger_than_chunk</li>
+<li class=fail>○ test_post_object_upload_size_below_minimum</li>
+<li class=fail>○ test_post_object_upload_size_limit_exceeded</li>
+<li class=fail>○ test_post_object_upload_size_rgw_chunk_size_bug</li>
+<li class=fail>○ test_post_object_user_specified_header</li>
+<li class=fail>○ test_post_object_wrong_bucket</li>
+<li class=fail>○ test_set_cors</li>
+</ul></details>
+</body></html>

@@ -19,6 +19,7 @@ internal/setup/          first-start bootstrap API
 internal/storage/        local disk storage engine
 migrations/              SQLite migrations
 docs/                    completed project documentation
+compat/s3-tests/         optional ceph/s3-tests runner (not vendored)
 ```
 
 ## Tests
@@ -28,6 +29,35 @@ Run all tests:
 ```bash
 go test ./...
 ```
+
+### External S3 compatibility suite (ceph/s3-tests)
+
+Shared team harness under `compat/s3-tests/` (tracked in git). It clones
+[ceph/s3-tests](https://github.com/ceph/s3-tests) into a local `.workdir/`
+and runs it against a temporary fbs-core process (or an external endpoint).
+
+```bash
+./compat/s3-tests/run.sh --keep
+# writes results/last-run.log + results/checklist.md + results/checklist.html
+
+./compat/s3-tests/run.sh -- s3tests/functional/test_s3.py::test_bucket_list_empty
+./compat/s3-tests/run.sh --full
+```
+
+Open the feature checklist after a run:
+
+- `compat/s3-tests/results/checklist.md`
+- `compat/s3-tests/results/checklist.html`
+
+Default `--core` mode applies `compat/s3-tests/markers.core`. Why each
+marker is dropped or kept is documented in
+[`compat/s3-tests/markers.md`](../compat/s3-tests/markers.md) (mini-IAM grants
+are not AWS IAM/policy/STS — those markers stay excluded). Product scope:
+[`plan/s3-compatibility.md`](../plan/s3-compatibility.md).
+
+This is discovery and regression against AWS-like expectations, not the CI
+source of truth. Claimed fbs-core behavior is covered by `go test ./...`.
+Full team instructions: [`compat/s3-tests/README.md`](../compat/s3-tests/README.md).
 
 The test suite is package-focused and covers:
 

@@ -5,7 +5,25 @@
 fbs-core is a minimal S3-compatible storage server intended for local and
 small-scale use. It implements the core S3 data-plane operations needed for
 standard object storage workflows but omits most of AWS's control-plane,
-security, and scale-out features.
+multi-account security, and scale-out features.
+
+**Related docs**
+
+| Doc | Role |
+|-----|------|
+| [`plan/access-control/access-control.md`](./access-control/access-control.md) | Authorization architecture (mini-IAM grants) |
+| [`compat/s3-tests/markers.md`](../compat/s3-tests/markers.md) | Why ceph/s3-tests markers are dropped or kept |
+| [`docs/s3-api.md`](../docs/s3-api.md) | Implemented S3 protocol surface |
+
+Status labels used below:
+
+| Status | Meaning |
+|--------|---------|
+| **Implemented** | Present in the product today |
+| **Planned (grants)** | Designed in access-control; Management grants model (not AWS IAM) |
+| **Could be added** | Reasonable product extension; no full design yet |
+| **Permanent non-goal** | Product law — will not match AWS shape (see access-control) |
+| **Out of scope** | Hard mismatch with single-node / self-hosted design |
 
 ## Implemented S3 Features
 
@@ -16,7 +34,7 @@ security, and scale-out features.
 | GetBucketLocation | Config-defined single region |
 | ListObjectsV1 / V2 | Prefix, delimiter, start-after, max-keys |
 | PutObject / GetObject / HeadObject / DeleteObject | |
-| DeleteObjects (multi-delete) | |  
+| DeleteObjects (multi-delete) | |
 | CopyObject | |
 | Multipart upload | Initiate, upload parts, complete, abort, list parts |
 | SigV4 header auth | |
@@ -24,32 +42,55 @@ security, and scale-out features.
 | Presigned GET URLs (public read) | Via management API; requires `FBS_PUBLIC_READ_SIGNING_SECRET` |
 | ETags | |
 
-## Not Implemented vs Out of Scope
+## Access control (identity & authorization)
+
+Today: authenticate with Bearer tokens or SigV4; authorize with admin role or
+bucket ownership. The access-control plan adds **mini-IAM grants** (fixed
+actions, per-bucket grants with optional key prefix, Management API control
+plane). That is intentional and **not** full AWS IAM.
+
+| Feature | Status | Notes |
+|---|---|---|
+| Admin / member roles + ownership | Implemented | Owner short-circuit on owned buckets |
+| Mini-IAM resource grants (Management API) | Planned (grants) | See access-control design; not S3 `?policy` |
+| ACLs (`?acl`) | Permanent non-goal | Ownership is first-class; ACL protocol not used |
+| Bucket policies (`?policy`) | Permanent non-goal | Grants only; no AWS policy language evaluator |
+| AWS IAM users / groups / roles / identity policies | Permanent non-goal | Principals live in local `users` table |
+| STS / AssumeRole / session tokens | Permanent non-goal | Long-lived keys only |
+| Web identity / OIDC federation | Permanent non-goal | |
+| Cross-account principals | Permanent non-goal | Single deployment |
+| ABAC / condition keys / tag-based authz | Permanent non-goal | Evaluator stays small and deterministic |
+| CORS configuration endpoints (`?cors`) | Could be added | Browser CORS at HTTP layer is separate |
+
+## Data management & storage features
+
+| Feature | Status | Notes |
+|---|---|---|
+| Versioning (`?versions`) | Could be added | No version IDs or delete markers today |
+| Object tags (`?tagging`) | Could be added | Tags for metadata only if added; never authz inputs |
+| Lifecycle policies | Could be added | No expiration/transition workers today |
+| S3 Object Lock (WORM) | Could be added | Usually couples to versioning |
+| Encryption (SSE-S3, SSE-C) | Could be added | Bytes stored as-is today |
+| Encryption (SSE-KMS) / KMS authz | Permanent non-goal | No KMS surface in access-control model |
+| Storage classes / tiering | Out of scope | Single on-disk store |
+| S3 Select (SQL over objects) | Out of scope | Query engine |
+| S3 Inventory / batch operations | Could be added | No design yet |
+| AppendObject | Out of scope | No plan; Put/Copy/multipart only |
+
+## Other AWS surfaces
 
 | Category | Feature | Status |
 |---|---|---|
-| Access control | ACLs (`?acl`) | Could be added |
-| Access control | Bucket policies (`?policy`) | Could be added |
-| Access control | CORS configuration endpoints (`?cors`) | Could be added |
-| Data management | Versioning (`?versions`) | Could be added |
-| Data management | Object tags (`?tagging`) | Could be added |
-| Data management | Lifecycle policies | Could be added |
-| Data management | S3 Object Lock (WORM) | Could be added |
-| Data management | S3 Inventory | Could be added |
-| Data management | S3 Select (SQL over objects) | Out of scope — query engine |
-| Data management | Batch operations | Could be added |
 | Replication | CRR / SRR | Out of scope — single-node |
-| Encryption | SSE-S3, SSE-KMS, SSE-C | Could be added |
 | Notifications | SNS / SQS / Lambda event notifications | Could be added |
 | Website hosting | Static website config (`?website`) | Could be added |
-| Auth / STS | Security Token Service (AssumeRole, GetSessionToken) | Could be added |
-| Auth / STS | Web identity federation | Could be added |
-| Advanced features | Transfer Acceleration | Out of scope — single-node |
-| Advanced features | S3 Object Lambda | Out of scope — request transform pipeline |
-| Advanced features | Multi-Region Access Points | Out of scope — single-node |
-| Advanced features | S3 Access Points | Out of scope — AWS networking primitive |
-| Advanced features | Requester Pays | Out of scope — no billing model |
-| Advanced features | Request route / Outposts | Out of scope — single-node |
+| Logging | Server access logging | Could be added |
+| Auth protocol | Signature Version 2 | Permanent non-goal — SigV4 (+ Bearer) only |
+| Advanced | Transfer Acceleration, multi-region APs, Outposts | Out of scope — single-node |
+| Advanced | S3 Object Lambda | Out of scope — request transform pipeline |
+| Advanced | S3 Access Points / S3 Control | Out of scope — AWS control-plane primitives |
+| Advanced | Requester Pays | Out of scope — no billing model |
+| Cloud tier | Cloud transition / restore | Out of scope — local disk only |
 
 ## Key Architectural Differences
 
@@ -82,13 +123,18 @@ resource-based bucket policies. Access is governed by statements with
 `Effect`, `Action`, `Resource`, and `Condition` blocks. STS provides
 temporary credentials via AssumeRole, web identity, or SAML federation.
 
-**fbs-core** uses a two-tier role system (`admin` / `member`) with a
+**fbs-core today** uses a two-tier role system (`admin` / `member`) with a
 bucket ownership check:
 
 | Role | Management API | S3 buckets |
 |---|---|---|
 | admin | Full access | All buckets |
 | member | No access | Owned buckets only |
+
+**fbs-core direction** (access-control plan): same identity model, plus
+**resource grants** so non-owners can get least-privilege data-plane access
+without becoming admins. Grants are positive allows only; there is no second
+AWS-style policy document evaluator.
 
 Bearer tokens (`fbsa_...`) are an fbs-core extension — AWS S3 only
 supports SigV4 (plus STS session tokens).
@@ -114,8 +160,21 @@ the filesystem provides is what you get.
 
 fbs-core is not trying to be a full S3 replacement. The scope is focused on
 S3 data-plane operations (bucket and object CRUD, multipart, listing, copy)
-with a lightweight management API. The control-plane features — policies,
-versioning, replication, encryption, notifications — are absent by design.
+with a lightweight management API and a deliberately small authorization
+model (roles, ownership, then grants).
+
+AWS control-plane features — IAM policy language, STS, bucket policy
+documents, multi-account — are permanent non-goals. Some data-management
+features (versioning, lifecycle, object lock, optional SSE) may be added
+later; until then they remain compatibility gaps, not promises.
+
+## Compatibility testing
+
+Use `compat/s3-tests/` for AWS-like gap discovery. The default core filter
+drops permanent non-goals and large deferred clusters; see
+[`compat/s3-tests/markers.md`](../compat/s3-tests/markers.md).
+
+Claimed behavior is enforced by `go test ./...`, not by s3-tests CI gates.
 
 ## When to Pick fbs-core Over AWS S3
 
@@ -130,5 +189,7 @@ versioning, replication, encryption, notifications — are absent by design.
 
 - Production workloads needing durability, replication, and scale
 - Multi-region or multi-tenant scenarios
-- Compliance requirements (encryption, object lock, audit logging)
-- Any need for the advanced features listed above
+- Compliance requirements that need AWS-native encryption, object lock, and
+  audit logging
+- Any need for full IAM policy language, STS, or the advanced features listed
+  as permanent non-goal / out of scope above

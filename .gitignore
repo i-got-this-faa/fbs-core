@@ -44,6 +44,11 @@ venv/
 .pytest_cache/
 .mypy_cache/
 
+# s3-tests harness is tracked under compat/s3-tests/ (scripts, markers, checklists).
+# Ignore only local runtime state and bulky regenerable logs.
+compat/s3-tests/.workdir/
+compat/s3-tests/results/*.log
+
 # Java
 *.class
 *.jar

@@ -14,7 +14,9 @@ This documentation describes the completed backend as implemented in this reposi
 - [Management API](./management-api.md): admin JSON endpoints for metrics, buckets, objects, keys, activity, and public URLs.
 - [Storage And Metadata](./storage-and-metadata.md): SQLite schema, migrations, disk layout, reconciliation, cache behavior, and multipart internals.
 - [Operations](./operations.md): startup, backup, cleanup, CORS, public reads, deployment, and troubleshooting.
-- [Development](./development.md): repository layout, test strategy, and implementation conventions.
+- [Development](./development.md): repository layout, test strategy, implementation conventions, and the optional ceph/s3-tests harness.
+- [S3 compatibility plan](../plan/s3-compatibility.md): implemented surface vs permanent non-goals and deferred features.
+- [s3-tests marker rationale](../compat/s3-tests/markers.md): why core suite markers are dropped or kept.
 
 ## Quick Start
 

@@ -15,7 +15,7 @@ The implemented region is `us-east-1`.
 | List objects v1 | `GET /{bucket}` or `GET /{bucket}?list-type=1` | Supports `prefix`, `delimiter`, `marker`, `max-keys`, `encoding-type=url`. |
 | List objects v2 | `GET /{bucket}?list-type=2` | Supports `prefix`, `delimiter`, `start-after`, `continuation-token`, `max-keys`, `encoding-type=url`. |
 | Delete bucket | `DELETE /{bucket}` | Requires bucket to be empty. |
-| Delete objects | `DELETE /{bucket}?delete` | Deletes up to 1000 objects from an XML request body. |
+| Delete objects | `POST /{bucket}?delete` (also `DELETE /{bucket}?delete`) | Deletes up to 1000 objects from an XML request body. AWS clients use POST. |
 
 ## Supported Object Operations
 

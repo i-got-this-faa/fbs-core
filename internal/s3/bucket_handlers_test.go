@@ -576,11 +576,13 @@ func TestDeleteObjects(t *testing.T) {
 	env := newObjectTestEnv(t)
 	env.mustPut(t, "a.txt", "a")
 	env.mustPut(t, "b.txt", "b")
+	env.mustPut(t, "c.txt", "c")
 
+	// Standard S3 multi-object delete uses POST (boto3 / AWS CLI).
 	body := `<Delete><Object><Key>a.txt</Key></Object><Object><Key>missing.txt</Key></Object></Delete>`
-	resp := env.do(t, http.MethodDelete, "/"+env.bucket+"?delete", body, deleteObjectsHeaders(body))
+	resp := env.do(t, http.MethodPost, "/"+env.bucket+"?delete", body, deleteObjectsHeaders(body))
 	if resp.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200; body=%s", resp.Code, resp.Body.String())
+		t.Fatalf("POST status = %d, want 200; body=%s", resp.Code, resp.Body.String())
 	}
 	var result deleteObjectsResult
 	if err := xml.Unmarshal(resp.Body.Bytes(), &result); err != nil {
@@ -593,8 +595,15 @@ func TestDeleteObjects(t *testing.T) {
 		t.Fatalf("deleted object lookup err = %v, want ErrObjectNotFound", err)
 	}
 
+	// DELETE ?delete remains accepted for compatibility.
+	compatBody := `<Delete><Object><Key>c.txt</Key></Object></Delete>`
+	compat := env.do(t, http.MethodDelete, "/"+env.bucket+"?delete", compatBody, deleteObjectsHeaders(compatBody))
+	if compat.Code != http.StatusOK {
+		t.Fatalf("DELETE status = %d, want 200; body=%s", compat.Code, compat.Body.String())
+	}
+
 	quietBody := `<Delete><Quiet>true</Quiet><Object><Key>b.txt</Key></Object></Delete>`
-	quiet := env.do(t, http.MethodDelete, "/"+env.bucket+"?delete", quietBody, deleteObjectsHeaders(quietBody))
+	quiet := env.do(t, http.MethodPost, "/"+env.bucket+"?delete", quietBody, deleteObjectsHeaders(quietBody))
 	if quiet.Code != http.StatusOK {
 		t.Fatalf("quiet status = %d, want 200; body=%s", quiet.Code, quiet.Body.String())
 	}
