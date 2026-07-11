@@ -74,6 +74,8 @@ func TestListBucketsIncludesGrantedBuckets(t *testing.T) {
 	})
 
 	now := time.Now().UTC()
+	// ListBuckets visibility requires any active grant (not specifically
+	// s3:ListBucket). GetObject is enough to surface the bucket in the listing.
 	_, _, err := env.grants.CreateIdempotent(context.Background(), &metadata.Grant{
 		ID: uuid.NewString(), BucketName: "other-bucket", GranteeUserID: "member-user",
 		Action: authz.ActionGetObject, IsActive: true,

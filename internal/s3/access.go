@@ -114,14 +114,6 @@ func (h *ObjectHandlers) ensureBucketAction(w http.ResponseWriter, r *http.Reque
 	return ok
 }
 
-// ensureBucket is retained for call sites that only need existence + coarse
-// access. Prefer ensureBucketAction with an explicit action when possible.
-// It uses s3:ListBucket with an empty list prefix so owners/admins and
-// whole-bucket list grantees pass; object operations should use their action.
-func (h *ObjectHandlers) ensureBucket(w http.ResponseWriter, r *http.Request, bucketName string) bool {
-	return h.ensureBucketAction(w, r, bucketName, authz.ActionListBucket, "", "")
-}
-
 func requireSignedHeader(w http.ResponseWriter, r *http.Request, headerName string) bool {
 	if requestHasSignedHeader(r, headerName) {
 		return true

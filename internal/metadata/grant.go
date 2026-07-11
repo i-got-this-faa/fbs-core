@@ -7,10 +7,14 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
 // grantableActions is the set of actions that may be stored on grant rows.
 // Kept local to avoid an import cycle with internal/authz (auth → metadata → authz → auth).
+// Keep in sync with authz.GrantableActions; TestGrantableActionsInSync enforces this.
 var grantableActions = map[string]struct{}{
 	"s3:ListBucket":               {},
 	"s3:GetObject":                {},
@@ -18,6 +22,15 @@ var grantableActions = map[string]struct{}{
 	"s3:DeleteObject":             {},
 	"s3:ListMultipartUploadParts": {},
 	"s3:AbortMultipartUpload":     {},
+}
+
+// GrantableActions returns the actions accepted on grant rows.
+func GrantableActions() []string {
+	out := make([]string, 0, len(grantableActions))
+	for action := range grantableActions {
+		out = append(out, action)
+	}
+	return out
 }
 
 func isGrantableAction(action string) bool {
@@ -44,6 +57,10 @@ var ErrGrantNotFound = errors.New("grant not found")
 
 // ErrInvalidGrantAction is returned when a non-grantable action is written.
 var ErrInvalidGrantAction = errors.New("invalid grant action")
+
+// ErrDuplicateGrant is returned when an update would create a second active
+// grant for the same (bucket, grantee, action, prefix).
+var ErrDuplicateGrant = errors.New("duplicate active grant")
 
 // GrantRepository persists and queries resource grants.
 type GrantRepository interface {
@@ -189,6 +206,9 @@ func (r *sqliteGrantRepository) Update(ctx context.Context, grant *Grant) error 
 		grant.ID,
 	)
 	if err != nil {
+		if isUniqueConstraintError(err) {
+			return ErrDuplicateGrant
+		}
 		return fmt.Errorf("update grant: %w", err)
 	}
 	rows, err := result.RowsAffected()
@@ -393,6 +413,18 @@ func isUniqueConstraintError(err error) bool {
 	if err == nil {
 		return false
 	}
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "unique constraint") || strings.Contains(msg, "constraint failed")
+	var se *sqlite.Error
+	if errors.As(err, &se) {
+		code := se.Code()
+		if code == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
+			return true
+		}
+		// Some paths only set the primary SQLITE_CONSTRAINT code.
+		if code&0xff == sqlite3.SQLITE_CONSTRAINT &&
+			strings.Contains(strings.ToLower(se.Error()), "unique") {
+			return true
+		}
+		return false
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "unique constraint")
 }

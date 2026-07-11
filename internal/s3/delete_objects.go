@@ -90,13 +90,13 @@ func (h *ObjectHandlers) DeleteObjects(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !allowed {
-			if !req.Quiet {
-				result.Errors = append(result.Errors, deleteObjectError{
-					Key:     key,
-					Code:    codeAccessDenied,
-					Message: messageAccessDenied,
-				})
-			}
+			// Quiet mode suppresses <Deleted> entries only; per-key <Error>
+			// entries must still be returned (AWS S3 multi-delete contract).
+			result.Errors = append(result.Errors, deleteObjectError{
+				Key:     key,
+				Code:    codeAccessDenied,
+				Message: messageAccessDenied,
+			})
 			continue
 		}
 

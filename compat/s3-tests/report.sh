@@ -124,6 +124,20 @@ log_path, collect_path, out_dir = map(Path, sys.argv[1:4])
 log = log_path.read_text(errors="replace")
 selected = [ln.strip() for ln in collect_path.read_text().splitlines() if ln.startswith("s3tests/")]
 
+# Prefer a repo-relative path in generated artifacts (no local home dirs).
+def portable_log_label(p: Path) -> str:
+    try:
+        abs_p = p.resolve()
+        text = str(abs_p)
+        marker = "/compat/s3-tests/"
+        if marker in text:
+            return "compat/s3-tests/" + text.split(marker, 1)[1]
+        return p.name
+    except Exception:
+        return p.name
+
+log_label = portable_log_label(log_path)
+
 failed, errored = set(), set()
 for line in log.splitlines():
     if line.startswith("FAILED s3tests/"):
@@ -206,7 +220,7 @@ now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 md = [
     "# S3 Compatibility Checklist",
     "",
-    f"Generated from `{log_path}` ({now}).",
+    f"Generated from `{log_label}` ({now}).",
     "",
     "Source: ceph/s3-tests functional suite with `markers.core` filter.",
     "",
@@ -274,7 +288,7 @@ ul{list-style:none;padding:0} li{font-family:ui-monospace,monospace;font-size:.8
 .badge{font-size:.75rem;background:#eee;border-radius:999px;padding:.1rem .45rem;margin-left:.4rem}
 </style></head><body>""",
     "<h1>fbs-core S3 compatibility checklist</h1>",
-    f"<p>From <code>{log_path}</code> · {now}</p>",
+    f"<p>From <code>{log_label}</code> · {now}</p>",
     f"<p><strong class=pass>{len(passed)} passed</strong> · <strong class=fail>{len(failed_m)} failed</strong> · <strong class=err>{len(errored_m)} errors</strong> · {len(selected)} selected ({100*len(passed)/max(len(selected),1):.1f}%)</p>",
     "<table><tr><th>Feature</th><th>Pass</th><th>Fail</th><th>Err</th><th>Rate</th><th>Coverage</th></tr>",
 ]

@@ -187,6 +187,10 @@ func (h *Handlers) PatchBucketGrant(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, errorCodeInvalidRequest, "invalid or non-grantable action")
 			return
 		}
+		if errors.Is(err, metadata.ErrDuplicateGrant) {
+			writeError(w, http.StatusConflict, errorCodeInvalidRequest, "an active grant already exists for this bucket, grantee, action, and prefix")
+			return
+		}
 		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to update grant")
 		return
 	}

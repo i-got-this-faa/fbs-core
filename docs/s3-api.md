@@ -19,7 +19,7 @@ After authentication, each data-plane operation is authorized through a fixed ac
 | List objects v1 | `GET /{bucket}` or `GET /{bucket}?list-type=1` | Requires `s3:ListBucket`; supports `prefix`, `delimiter`, `marker`, `max-keys`, `encoding-type=url`. |
 | List objects v2 | `GET /{bucket}?list-type=2` | Requires `s3:ListBucket`; supports `prefix`, `delimiter`, `start-after`, `continuation-token`, `max-keys`, `encoding-type=url`. |
 | Delete bucket | `DELETE /{bucket}` | Admin or owner only; not grantable. Requires bucket to be empty. |
-| Delete objects | `POST /{bucket}?delete` (also `DELETE /{bucket}?delete`) | Each key authorized for `s3:DeleteObject`; denied keys reported as errors when not quiet. AWS clients use POST. |
+| Delete objects | `POST /{bucket}?delete` (also `DELETE /{bucket}?delete`) | Each key authorized for `s3:DeleteObject`; denied keys are always returned as per-key errors. Quiet mode suppresses only successful `<Deleted>` entries. AWS clients use POST. |
 
 ## Supported Object Operations
 

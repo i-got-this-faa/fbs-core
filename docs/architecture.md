@@ -80,7 +80,7 @@ The authentication chain supports:
 - AWS SigV4 header authentication.
 - AWS SigV4 query-string authentication.
 
-Authenticated requests receive an `auth.Principal` in request context. S3 uses the principal for ownership and list filtering. Management requires `Role == "admin"`.
+Authenticated requests receive an `auth.Principal` in request context. S3 uses the principal for ownership, grant evaluation, and list filtering. Most Management endpoints require `Role == "admin"`; grant administration and ownership transfer allow the bucket owner, and `GET /api/management/grants/me` is available to any authenticated principal.
 
 ## Caching And File Serving
 

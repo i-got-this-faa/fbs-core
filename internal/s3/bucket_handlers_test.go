@@ -1062,6 +1062,7 @@ func newSigV4S3TestEnv(t *testing.T) objectTestEnv {
 		users:   userRepo,
 		buckets: bucketRepo,
 		objects: objectRepo,
+		grants:  grantRepo,
 		storage: disk,
 		sigv4:   sigv4,
 		bucket:  bucketName,

@@ -103,7 +103,7 @@ Users have one of two roles:
 
 Shared-bucket access is configured via Management resource grants (mini-IAM), not AWS IAM policies or S3 ACLs. See `plan/access-control/access-control.md` and `docs/management-api.md`.
 
-S3 bucket listing is role-aware. Admin users list all buckets. Member users list only buckets owned by their user ID.
+S3 bucket listing is role-aware. Admin users list all buckets. Member users list buckets they own plus any bucket on which they hold at least one active resource grant (any action).
 
 ## Inactive Users
 

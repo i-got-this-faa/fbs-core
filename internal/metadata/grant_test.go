@@ -166,6 +166,54 @@ func TestGrantRejectsNonGrantableAction(t *testing.T) {
 	}
 }
 
+func TestGrantUpdateDuplicateActiveConflict(t *testing.T) {
+	t.Parallel()
+
+	db, err := Open(t.TempDir() + "/grants-dup.db")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	ctx := context.Background()
+	users := NewUserRepository(db)
+	owner := uniqueTestUser("Owner")
+	grantee := uniqueTestUser("Grantee")
+	if err := users.Create(ctx, owner); err != nil {
+		t.Fatalf("create owner: %v", err)
+	}
+	if err := users.Create(ctx, grantee); err != nil {
+		t.Fatalf("create grantee: %v", err)
+	}
+	if err := NewBucketRepository(db).Create(ctx, &Bucket{Name: "b", OwnerID: owner.ID, CreatedAt: time.Now().UTC()}); err != nil {
+		t.Fatalf("create bucket: %v", err)
+	}
+
+	grants := NewGrantRepository(db)
+	now := time.Now().UTC()
+	inactive := &Grant{
+		ID: uuid.NewString(), BucketName: "b", GranteeUserID: grantee.ID,
+		Action: "s3:GetObject", KeyPrefix: "docs/", IsActive: false,
+		CreatedAt: now, UpdatedAt: now,
+	}
+	if err := grants.Create(ctx, inactive); err != nil {
+		t.Fatalf("create inactive: %v", err)
+	}
+	active := &Grant{
+		ID: uuid.NewString(), BucketName: "b", GranteeUserID: grantee.ID,
+		Action: "s3:GetObject", KeyPrefix: "docs/", IsActive: true,
+		CreatedAt: now, UpdatedAt: now,
+	}
+	if err := grants.Create(ctx, active); err != nil {
+		t.Fatalf("create active: %v", err)
+	}
+
+	inactive.IsActive = true
+	if err := grants.Update(ctx, inactive); !errors.Is(err, ErrDuplicateGrant) {
+		t.Fatalf("update err = %v, want ErrDuplicateGrant", err)
+	}
+}
+
 func TestGrantCascadeOnBucketDelete(t *testing.T) {
 	t.Parallel()
 
