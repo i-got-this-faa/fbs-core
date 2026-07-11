@@ -3,6 +3,8 @@ package s3
 import (
 	"encoding/xml"
 	"net/http"
+
+	"github.com/i-got-this-faa/fbs/internal/authz"
 )
 
 type locationConstraintResult struct {
@@ -13,7 +15,7 @@ type locationConstraintResult struct {
 
 func (h *ObjectHandlers) GetBucketLocation(w http.ResponseWriter, r *http.Request) {
 	bucketName := chiBucketParam(r)
-	if !h.ensureBucket(w, r, bucketName) {
+	if !h.ensureBucketAction(w, r, bucketName, authz.ActionListBucket, "", "") {
 		return
 	}
 

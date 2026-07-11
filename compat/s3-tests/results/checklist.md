@@ -1,6 +1,6 @@
 # S3 Compatibility Checklist
 
-Generated from `/tmp/s3-tests-run2.log` (2026-07-10 09:31 UTC).
+Generated from `/home/radhey/code/fbs/fbs-core/compat/s3-tests/results/last-run.log` (2026-07-11 07:10 UTC).
 
 Source: ceph/s3-tests functional suite with `markers.core` filter.
 

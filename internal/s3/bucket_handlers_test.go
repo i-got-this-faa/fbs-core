@@ -969,10 +969,13 @@ func newScopedS3TestEnv(t *testing.T, principal auth.Principal) objectTestEnv {
 		t.Fatalf("new storage: %v", err)
 	}
 	objectRepo := metadata.NewObjectRepository(db)
+	grantRepo := metadata.NewGrantRepository(db)
 	handlers := &ObjectHandlers{
 		Users:   userRepo,
 		Buckets: bucketRepo,
 		Objects: objectRepo,
+		Grants:  grantRepo,
+		Authz:   NewAuthzEvaluator(grantRepo),
 		Storage: disk,
 		Logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
@@ -992,6 +995,7 @@ func newScopedS3TestEnv(t *testing.T, principal auth.Principal) objectTestEnv {
 		users:   userRepo,
 		buckets: bucketRepo,
 		objects: objectRepo,
+		grants:  grantRepo,
 		storage: disk,
 		bucket:  "member-bucket",
 		dataDir: t.TempDir(),
@@ -1029,10 +1033,13 @@ func newSigV4S3TestEnv(t *testing.T) objectTestEnv {
 		t.Fatalf("new storage: %v", err)
 	}
 	objectRepo := metadata.NewObjectRepository(db)
+	grantRepo := metadata.NewGrantRepository(db)
 	handlers := &ObjectHandlers{
 		Users:   userRepo,
 		Buckets: bucketRepo,
 		Objects: objectRepo,
+		Grants:  grantRepo,
+		Authz:   NewAuthzEvaluator(grantRepo),
 		Storage: disk,
 	}
 	authChain := &auth.ChainAuthenticator{

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/i-got-this-faa/fbs/internal/authz"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
 	"github.com/i-got-this-faa/fbs/internal/storage"
 )
@@ -20,11 +21,11 @@ const cleanupTimeout = 30 * time.Second
 // CreateMultipartUpload handles POST /{bucket}/{key}?uploads.
 func (h *ObjectHandlers) CreateMultipartUpload(w http.ResponseWriter, r *http.Request) {
 	bucketName, key := objectRouteParams(r)
-	if !h.ensureBucket(w, r, bucketName) {
-		return
-	}
 	if key == "" {
 		WriteS3Error(w, r, http.StatusBadRequest, codeInvalidRequest, messageInvalidRequest)
+		return
+	}
+	if !h.ensureBucketAction(w, r, bucketName, authz.ActionPutObject, key, "") {
 		return
 	}
 	if err := storage.ValidateKey(key); err != nil {
@@ -63,11 +64,11 @@ func (h *ObjectHandlers) CreateMultipartUpload(w http.ResponseWriter, r *http.Re
 // UploadPart handles PUT /{bucket}/{key}?partNumber={n}&uploadId={id}.
 func (h *ObjectHandlers) UploadPart(w http.ResponseWriter, r *http.Request) {
 	bucketName, key := objectRouteParams(r)
-	if !h.ensureBucket(w, r, bucketName) {
-		return
-	}
 	if key == "" {
 		WriteS3Error(w, r, http.StatusBadRequest, codeInvalidRequest, messageInvalidRequest)
+		return
+	}
+	if !h.ensureBucketAction(w, r, bucketName, authz.ActionPutObject, key, "") {
 		return
 	}
 
@@ -184,11 +185,11 @@ func (h *ObjectHandlers) UploadPart(w http.ResponseWriter, r *http.Request) {
 // CompleteMultipartUpload handles POST /{bucket}/{key}?uploadId={id}.
 func (h *ObjectHandlers) CompleteMultipartUpload(w http.ResponseWriter, r *http.Request) {
 	bucketName, key := objectRouteParams(r)
-	if !h.ensureBucket(w, r, bucketName) {
-		return
-	}
 	if key == "" {
 		WriteS3Error(w, r, http.StatusBadRequest, codeInvalidRequest, messageInvalidRequest)
+		return
+	}
+	if !h.ensureBucketAction(w, r, bucketName, authz.ActionPutObject, key, "") {
 		return
 	}
 
@@ -406,11 +407,11 @@ func (h *ObjectHandlers) CompleteMultipartUpload(w http.ResponseWriter, r *http.
 // AbortMultipartUpload handles DELETE /{bucket}/{key}?uploadId={id}.
 func (h *ObjectHandlers) AbortMultipartUpload(w http.ResponseWriter, r *http.Request) {
 	bucketName, key := objectRouteParams(r)
-	if !h.ensureBucket(w, r, bucketName) {
-		return
-	}
 	if key == "" {
 		WriteS3Error(w, r, http.StatusBadRequest, codeInvalidRequest, messageInvalidRequest)
+		return
+	}
+	if !h.ensureBucketAction(w, r, bucketName, authz.ActionAbortMultipartUpload, key, "") {
 		return
 	}
 

@@ -807,12 +807,14 @@ func newManagementTestEnvWithConfig(t *testing.T, cfg config.Config) managementT
 			t.Fatalf("new public read signer: %v", err)
 		}
 	}
+	grantRepo := metadata.NewGrantRepository(db)
 	handlers := &management.Handlers{
 		Management:       metadata.NewManagementRepository(db),
 		Buckets:          bucketRepo,
 		Objects:          objectRepo,
 		Activity:         metadata.NewActivityRepository(db),
 		Users:            userRepo,
+		Grants:           grantRepo,
 		Storage:          disk,
 		Config:           cfg,
 		PublicReadSigner: signer,
@@ -830,6 +832,8 @@ func newManagementTestEnvWithConfig(t *testing.T, cfg config.Config) managementT
 		Users:            userRepo,
 		Buckets:          bucketRepo,
 		Objects:          objectRepo,
+		Grants:           grantRepo,
+		Authz:            s3.NewAuthzEvaluator(grantRepo),
 		Storage:          disk,
 		Logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
 		S3CacheControl:   cfg.S3CacheControl,
@@ -839,8 +843,11 @@ func newManagementTestEnvWithConfig(t *testing.T, cfg config.Config) managementT
 		s3.RegisterPublicReadRoutes(r, objectHandlers)
 		r.Route("/api/management", func(managementRoutes chi.Router) {
 			managementRoutes.Use(auth.RequireAuthentication(authChain, management.WriteAuthError))
-			managementRoutes.Use(auth.RequireRole("admin", management.WriteAuthError))
-			management.RegisterRoutes(managementRoutes, handlers)
+			management.RegisterGrantRoutes(managementRoutes, handlers)
+			managementRoutes.Group(func(adminRoutes chi.Router) {
+				adminRoutes.Use(auth.RequireRole("admin", management.WriteAuthError))
+				management.RegisterAdminRoutes(adminRoutes, handlers)
+			})
 		})
 	})
 

@@ -3,6 +3,7 @@ package s3
 import (
 	"net/http"
 
+	"github.com/i-got-this-faa/fbs/internal/authz"
 	"github.com/i-got-this-faa/fbs/internal/s3compat"
 )
 
@@ -14,7 +15,7 @@ func (h *ObjectHandlers) HeadBucket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("x-amz-bucket-region", s3compat.Region)
-	if !h.ensureBucket(w, r, bucketName) {
+	if !h.ensureBucketAction(w, r, bucketName, authz.ActionListBucket, "", "") {
 		return
 	}
 

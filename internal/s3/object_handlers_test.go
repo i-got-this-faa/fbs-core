@@ -35,6 +35,7 @@ type objectTestEnv struct {
 	buckets          metadata.BucketRepository
 	objects          metadata.ObjectRepository
 	multipartUploads metadata.MultipartUploadRepository
+	grants           metadata.GrantRepository
 	storage          storage.DiskEngine
 	sigv4            auth.SigV4Credentials
 	signer           *publicread.Signer
@@ -82,11 +83,14 @@ func newObjectTestEnv(t *testing.T) objectTestEnv {
 		t.Fatalf("new public read signer: %v", err)
 	}
 	multipartRepo := metadata.NewMultipartUploadRepository(db)
+	grantRepo := metadata.NewGrantRepository(db)
 	handlers := &ObjectHandlers{
 		Users:            userRepo,
 		Buckets:          bucketRepo,
 		Objects:          objectRepo,
 		MultipartUploads: multipartRepo,
+		Grants:           grantRepo,
+		Authz:            NewAuthzEvaluator(grantRepo),
 		Storage:          disk,
 		Now:              func() time.Time { return now },
 		NewID:            newSequentialID(),
@@ -114,6 +118,7 @@ func newObjectTestEnv(t *testing.T) objectTestEnv {
 		buckets:          bucketRepo,
 		objects:          objectRepo,
 		multipartUploads: multipartRepo,
+		grants:           grantRepo,
 		storage:          disk,
 		sigv4:            sigv4,
 		signer:           signer,

@@ -7,16 +7,17 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/i-got-this-faa/fbs/internal/authz"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
 	"github.com/i-got-this-faa/fbs/internal/storage"
 )
 
 func (h *ObjectHandlers) loadObjectForRead(w http.ResponseWriter, r *http.Request, bucketName, key string) (*metadata.Object, bool) {
-	if !h.ensureBucket(w, r, bucketName) {
-		return nil, false
-	}
 	if key == "" {
 		WriteS3Error(w, r, http.StatusBadRequest, codeInvalidRequest, messageInvalidRequest)
+		return nil, false
+	}
+	if !h.ensureBucketAction(w, r, bucketName, authz.ActionGetObject, key, "") {
 		return nil, false
 	}
 

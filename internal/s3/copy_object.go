@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/i-got-this-faa/fbs/internal/authz"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
 )
 
@@ -24,9 +25,6 @@ type copySource struct {
 
 func (h *ObjectHandlers) CopyObject(w http.ResponseWriter, r *http.Request) {
 	destinationBucket, destinationKey := objectRouteParams(r)
-	if !h.ensureBucket(w, r, destinationBucket) {
-		return
-	}
 	if destinationKey == "" {
 		WriteS3Error(w, r, http.StatusBadRequest, codeInvalidRequest, messageInvalidRequest)
 		return
@@ -48,7 +46,11 @@ func (h *ObjectHandlers) CopyObject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !h.ensureBucket(w, r, source.bucketName) {
+	// Copy requires get on source and put on destination (both checks always).
+	if !h.ensureBucketAction(w, r, source.bucketName, authz.ActionGetObject, source.key, "") {
+		return
+	}
+	if !h.ensureBucketAction(w, r, destinationBucket, authz.ActionPutObject, destinationKey, "") {
 		return
 	}
 

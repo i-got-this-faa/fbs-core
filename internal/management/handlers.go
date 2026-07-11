@@ -35,6 +35,7 @@ type Handlers struct {
 	Objects          metadata.ObjectRepository
 	Activity         metadata.ActivityRepository
 	Users            metadata.UserRepository
+	Grants           metadata.GrantRepository
 	Storage          storage.DiskEngine
 	Config           config.Config
 	PublicReadSigner *publicread.Signer

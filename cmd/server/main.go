@@ -112,12 +112,16 @@ func main() {
 		}
 	}
 
+	grantRepo := metadata.NewGrantRepository(db)
+	authzEvaluator := s3.NewAuthzEvaluator(grantRepo)
+
 	managementHandlers := &management.Handlers{
 		Management:       metadata.NewManagementRepository(db),
 		Buckets:          bucketRepo,
 		Objects:          objectRepo,
 		Activity:         metadata.NewActivityRepository(db),
 		Users:            userRepo,
+		Grants:           grantRepo,
 		Storage:          storageEngine,
 		Config:           cfg,
 		PublicReadSigner: publicReadSigner,
@@ -127,6 +131,8 @@ func main() {
 		Buckets:          bucketRepo,
 		Objects:          objectRepo,
 		Activity:         metadata.NewActivityRepository(db),
+		Grants:           grantRepo,
+		Authz:            authzEvaluator,
 		Storage:          storageEngine,
 		Logger:           logger,
 		S3CacheControl:   cfg.S3CacheControl,
@@ -156,8 +162,12 @@ func main() {
 		setup.RegisterRoutes(r, setupHandlers)
 		r.Route("/api/management", func(managementRoutes chi.Router) {
 			managementRoutes.Use(auth.RequireAuthentication(managementAuthChain, management.WriteAuthError))
-			managementRoutes.Use(auth.RequireRole("admin", management.WriteAuthError))
-			management.RegisterRoutes(managementRoutes, managementHandlers)
+			// Grant routes: authenticated admin or bucket owner (enforced in handlers).
+			management.RegisterGrantRoutes(managementRoutes, managementHandlers)
+			managementRoutes.Group(func(adminRoutes chi.Router) {
+				adminRoutes.Use(auth.RequireRole("admin", management.WriteAuthError))
+				management.RegisterAdminRoutes(adminRoutes, managementHandlers)
+			})
 		})
 		r.Group(func(s3Routes chi.Router) {
 			s3Routes.Use(auth.RequireAuthentication(authChain, writeS3AuthError))

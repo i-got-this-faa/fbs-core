@@ -187,6 +187,37 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 8,
+		name:    "add resource grants",
+		sql: `
+CREATE TABLE IF NOT EXISTS grants (
+    id              TEXT PRIMARY KEY,
+    bucket_name     TEXT NOT NULL REFERENCES buckets(name) ON DELETE CASCADE,
+    grantee_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    action          TEXT NOT NULL,
+    key_prefix      TEXT NOT NULL DEFAULT '',
+    is_active       INTEGER NOT NULL DEFAULT 1,
+    created_by      TEXT REFERENCES users(id) ON DELETE SET NULL,
+    note            TEXT,
+    created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_grants_unique_active
+    ON grants(bucket_name, grantee_user_id, action, key_prefix)
+    WHERE is_active = 1;
+
+CREATE INDEX IF NOT EXISTS idx_grants_bucket_grantee
+    ON grants(bucket_name, grantee_user_id);
+
+CREATE INDEX IF NOT EXISTS idx_grants_grantee
+    ON grants(grantee_user_id);
+
+CREATE INDEX IF NOT EXISTS idx_grants_bucket
+    ON grants(bucket_name);
+`,
+	},
 }
 
 func ensureMigrationsTable(db *sql.DB) error {

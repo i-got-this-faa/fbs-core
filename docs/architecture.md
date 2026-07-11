@@ -5,10 +5,11 @@
 - `cmd/server`: process entrypoint, wiring, startup reconciliation, background cleanup, and graceful shutdown.
 - `internal/http`: router construction, health endpoints, CORS, logging, and panic recovery middleware.
 - `internal/auth`: Bearer token, AWS SigV4, dev-mode authentication, role middleware, and request principal context.
+- `internal/authz`: pure S3 data-plane allow/deny evaluation (admin → owner → resource grants → deny).
 - `internal/setup`: loopback-only first-start bootstrap endpoints.
-- `internal/management`: admin JSON API handlers.
+- `internal/management`: admin JSON API handlers, plus grant and ownership routes for admins/owners.
 - `internal/s3`: S3-compatible bucket, object, copy, delete, list, public read, and multipart handlers.
-- `internal/metadata`: SQLite-backed repositories and optional metadata cache wrappers.
+- `internal/metadata`: SQLite-backed repositories (including grants) and optional metadata cache wrappers.
 - `internal/storage`: local disk object storage, path validation, atomic writes, reads, deletes, and reconciliation.
 - `migrations`: runtime SQLite migrations.
 
@@ -39,9 +40,9 @@ The router always registers:
 - `/api/management/*`
 - S3 bucket and object routes at the root
 
-Management routes are protected by authentication and then by `admin` role authorization.
+Management routes require authentication. Most management endpoints also require the `admin` role. Grant administration and ownership transfer are available to admins or the bucket owner; `GET /api/management/grants/me` is available to any authenticated principal for their own grants.
 
-S3 routes are protected by authentication and then dispatched based on method, bucket, object key, and query parameters. The object read routes are registered separately from mutation routes so reads can keep a minimal middleware path and preserve Go's efficient file-serving behavior.
+S3 routes are protected by authentication and then authorized per action through `internal/authz` (admin short-circuit, bucket owner short-circuit, then active resource grants with optional key prefix). Handlers map operations to fixed `s3:*` actions; they do not embed authorization SQL. The object read routes are registered separately from mutation routes so reads can keep a minimal middleware path and preserve Go's efficient file-serving behavior.
 
 ## Data Model
 
