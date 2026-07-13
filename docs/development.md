@@ -66,16 +66,26 @@ The test suite is package-focused and covers:
 - Setup bootstrap behavior.
 - Management endpoint contracts.
 - Bearer, SigV4, dev-mode, principal, and middleware auth behavior.
-- Metadata repositories, migrations, cache behavior, multipart state, users, buckets, objects, and management queries.
+- Authz evaluator (admin/owner/grants/prefix/list rules) and grant repository behavior.
+- Metadata repositories, migrations, cache behavior, multipart state, users, buckets, objects, grants, and management queries.
 - Storage writes, reads, deletes, path sanitization, and reconciliation.
-- S3 bucket, object, multipart, checksum, and compatibility behavior.
+- S3 bucket, object, multipart, checksum, grant-scoped access, and compatibility behavior.
 - Public read signing.
+
+## Adding S3 Operations and Actions
+
+When implementing a new S3 data-plane operation:
+
+1. Map it to an existing action in `internal/authz/actions.go`, or add a new action there and in `plan/access-control/access-control.md`.
+2. If the action should be grantable, add it to `GrantableActions` and to metadata grantable validation.
+3. Call the shared authz evaluator from the handler with the correct action, bucket, object key, and list prefix.
+4. Do not invent a private owner-only boolean path for normal bucket/object ops.
 
 ## Implementation Principles
 
 The codebase keeps behavior separated by package:
 
-- HTTP handlers translate protocol details to repository and storage calls.
+- HTTP handlers translate protocol details to repository and storage calls; authorization decisions come from `internal/authz`.
 - Metadata repositories own SQLite queries and transactional state changes.
 - Storage owns filesystem paths, temp files, file assembly, and reconciliation.
 - Auth owns credential parsing and principal creation.

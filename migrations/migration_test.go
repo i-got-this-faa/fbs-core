@@ -64,8 +64,8 @@ func TestRun_Idempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("count migrations: %v", err)
 	}
-	if count != 7 {
-		t.Errorf("migration count = %d, want 7", count)
+	if count != 8 {
+		t.Errorf("migration count = %d, want 8", count)
 	}
 }
 
@@ -157,8 +157,8 @@ func TestRun_BootstrapFromInitSQL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("count migrations: %v", err)
 	}
-	if count != 7 {
-		t.Errorf("migration count = %d, want 7", count)
+	if count != 8 {
+		t.Errorf("migration count = %d, want 8", count)
 	}
 
 	// Verify sigv4 columns were added by v2

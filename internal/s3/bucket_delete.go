@@ -5,12 +5,13 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/i-got-this-faa/fbs/internal/authz"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
 )
 
 func (h *ObjectHandlers) DeleteBucket(w http.ResponseWriter, r *http.Request) {
 	bucketName := chiBucketParam(r)
-	if !h.ensureBucket(w, r, bucketName) {
+	if !h.ensureBucketAction(w, r, bucketName, authz.ActionDeleteBucket, "", "") {
 		return
 	}
 

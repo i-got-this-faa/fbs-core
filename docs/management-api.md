@@ -1,6 +1,6 @@
 # Management API
 
-The Management API is a JSON admin API under `/api/management`. All routes require authentication and the `admin` role. Responses use `Cache-Control: no-store`.
+The Management API is a JSON API under `/api/management`. Most routes require authentication and the `admin` role. Grant administration and ownership transfer also allow the **bucket owner**. Listing one's own grants (`GET /grants/me`) requires only authentication. Responses use `Cache-Control: no-store`.
 
 Errors use this shape:
 
@@ -29,7 +29,77 @@ Missing credentials return `401` and set:
 WWW-Authenticate: Bearer realm="fbs"
 ```
 
-Malformed, invalid, or unsupported credentials return `401`. Inactive users or non-admin users return `403`.
+Malformed, invalid, or unsupported credentials return `401`. Inactive users or callers without the required role return `403`.
+
+## Resource Grants (mini-IAM)
+
+Normalized resource grants are the sharing model for S3 data-plane access. They are **not** AWS IAM policies, bucket policies, or ACLs. See `plan/access-control/access-control.md`.
+
+List grants on a bucket (admin or owner):
+
+```http
+GET /api/management/buckets/{bucket}/grants
+```
+
+Create grants (admin or owner). One row is created per action; duplicate active grants are idempotent:
+
+```http
+POST /api/management/buckets/{bucket}/grants
+Content-Type: application/json
+
+{
+  "grantee_user_id": "user-uuid",
+  "actions": ["s3:GetObject", "s3:ListBucket"],
+  "key_prefix": "docs/",
+  "note": "optional label"
+}
+```
+
+Alternatively identify the grantee with `grantee_access_key_id` (resolved server-side to user id). Grantable actions:
+
+- `s3:ListBucket`
+- `s3:GetObject`
+- `s3:PutObject`
+- `s3:DeleteObject`
+- `s3:ListMultipartUploadParts`
+- `s3:AbortMultipartUpload`
+
+`s3:CreateBucket` and `s3:DeleteBucket` are not grantable.
+
+Update a grant (prefix, active, note):
+
+```http
+PATCH /api/management/buckets/{bucket}/grants/{grantID}
+```
+
+Delete a grant:
+
+```http
+DELETE /api/management/buckets/{bucket}/grants/{grantID}
+```
+
+List my grants:
+
+```http
+GET /api/management/grants/me
+```
+
+List grants for a user (admin only):
+
+```http
+GET /api/management/users/{userID}/grants
+```
+
+Transfer bucket ownership (admin or current owner):
+
+```http
+POST /api/management/buckets/{bucket}/transfer-ownership
+Content-Type: application/json
+
+{
+  "new_owner_user_id": "user-uuid"
+}
+```
 
 ## Metrics
 

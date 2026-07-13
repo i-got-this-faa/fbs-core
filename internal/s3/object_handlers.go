@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/i-got-this-faa/fbs/internal/authz"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
 	"github.com/i-got-this-faa/fbs/internal/publicread"
 	"github.com/i-got-this-faa/fbs/internal/storage"
@@ -21,6 +22,8 @@ type ObjectHandlers struct {
 	Objects          metadata.ObjectRepository
 	Activity         metadata.ActivityRepository
 	MultipartUploads metadata.MultipartUploadRepository
+	Grants           metadata.GrantRepository
+	Authz            *authz.Evaluator
 	Storage          storage.DiskEngine
 	Now              func() time.Time
 	NewID            func() string
@@ -66,11 +69,11 @@ func (h *ObjectHandlers) acquireUploadLock(uploadID string) func() {
 
 func (h *ObjectHandlers) PutObject(w http.ResponseWriter, r *http.Request) {
 	bucketName, key := objectRouteParams(r)
-	if !h.ensureBucket(w, r, bucketName) {
-		return
-	}
 	if key == "" {
 		WriteS3Error(w, r, http.StatusBadRequest, codeInvalidRequest, messageInvalidRequest)
+		return
+	}
+	if !h.ensureBucketAction(w, r, bucketName, authz.ActionPutObject, key, "") {
 		return
 	}
 
@@ -166,11 +169,11 @@ func (h *ObjectHandlers) HeadObject(w http.ResponseWriter, r *http.Request) {
 
 func (h *ObjectHandlers) DeleteObject(w http.ResponseWriter, r *http.Request) {
 	bucketName, key := objectRouteParams(r)
-	if !h.ensureBucket(w, r, bucketName) {
-		return
-	}
 	if key == "" {
 		WriteS3Error(w, r, http.StatusBadRequest, codeInvalidRequest, messageInvalidRequest)
+		return
+	}
+	if !h.ensureBucketAction(w, r, bucketName, authz.ActionDeleteObject, key, "") {
 		return
 	}
 

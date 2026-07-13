@@ -98,10 +98,12 @@ Rules:
 
 Users have one of two roles:
 
-- `admin`: can use S3 routes and Management API routes.
-- `member`: can use S3 routes. Management API access is denied.
+- `admin`: full S3 data-plane access and full Management API access (including grant administration on any bucket).
+- `member`: S3 access on owned buckets and buckets/actions/prefixes covered by **resource grants**. No general Management access; may list own grants (`GET /api/management/grants/me`) and administer grants only as owner of a bucket.
 
-S3 bucket listing is role-aware. Admin users list all buckets. Member users list only buckets owned by their user ID.
+Shared-bucket access is configured via Management resource grants (mini-IAM), not AWS IAM policies or S3 ACLs. See `plan/access-control/access-control.md` and `docs/management-api.md`.
+
+S3 bucket listing is role-aware. Admin users list all buckets. Member users list buckets they own plus any bucket on which they hold at least one active resource grant (any action).
 
 ## Inactive Users
 

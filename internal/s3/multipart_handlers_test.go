@@ -548,11 +548,14 @@ func TestCompleteMultipartUploadEnforcesMinPartSize(t *testing.T) {
 
 	objectRepo := metadata.NewObjectRepository(db)
 	multipartRepo := metadata.NewMultipartUploadRepository(db)
+	grantRepo := metadata.NewGrantRepository(db)
 	handlers := &ObjectHandlers{
 		Users:            userRepo,
 		Buckets:          bucketRepo,
 		Objects:          objectRepo,
 		MultipartUploads: multipartRepo,
+		Grants:           grantRepo,
+		Authz:            NewAuthzEvaluator(grantRepo),
 		Storage:          disk,
 		Now:              func() time.Time { return time.Date(2026, 4, 30, 12, 0, 0, 0, time.UTC) },
 		NewID:            newSequentialID(),

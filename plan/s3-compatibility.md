@@ -52,7 +52,7 @@ plane). That is intentional and **not** full AWS IAM.
 | Feature | Status | Notes |
 |---|---|---|
 | Admin / member roles + ownership | Implemented | Owner short-circuit on owned buckets |
-| Mini-IAM resource grants (Management API) | Planned (grants) | See access-control design; not S3 `?policy` |
+| Mini-IAM resource grants (Management API) | Implemented | Fixed actions + optional key prefix; not S3 `?policy` |
 | ACLs (`?acl`) | Permanent non-goal | Ownership is first-class; ACL protocol not used |
 | Bucket policies (`?policy`) | Permanent non-goal | Grants only; no AWS policy language evaluator |
 | AWS IAM users / groups / roles / identity policies | Permanent non-goal | Principals live in local `users` table |
