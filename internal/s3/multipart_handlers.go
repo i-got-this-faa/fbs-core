@@ -360,15 +360,16 @@ func (h *ObjectHandlers) ListParts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Filter parts by marker.
-	startIdx := 0
+	found := false
 	for i, p := range parts {
 		if p.PartNumber > partNumberMarker {
-			startIdx = i
+			parts = parts[i:]
+			found = true
 			break
 		}
 	}
-	if startIdx > 0 {
-		parts = parts[startIdx:]
+	if !found {
+		parts = nil
 	}
 
 	isTruncated := len(parts) > maxParts
