@@ -346,29 +346,37 @@ func scanObject(row *sql.Row) (*Object, error) {
 		return nil, fmt.Errorf("scan object: %w", err)
 	}
 
+	if err := applyScannedExtras(&o, createdAt, updatedAt, metaStr, csCRC32, csCRC32C, csCRC64NVME, csSHA1, csSHA256); err != nil {
+		return nil, err
+	}
+
+	return &o, nil
+}
+func applyScannedExtras(o *Object, createdAt, updatedAt string, metaStr sql.NullString, csCRC32, csCRC32C, csCRC64NVME, csSHA1, csSHA256 sql.NullString) error {
 	o.ChecksumCRC32 = csCRC32.String
 	o.ChecksumCRC32C = csCRC32C.String
 	o.ChecksumCRC64NVME = csCRC64NVME.String
 	o.ChecksumSHA1 = csSHA1.String
 	o.ChecksumSHA256 = csSHA256.String
 
+	var err error
 	o.CreatedAt, err = parseTimestamp(createdAt)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	o.UpdatedAt, err = parseTimestamp(updatedAt)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	if metaStr.Valid && metaStr.String != "" {
 		if err := json.Unmarshal([]byte(metaStr.String), &o.UserMetadata); err != nil {
-			return nil, fmt.Errorf("unmarshal user metadata: %w", err)
+			return fmt.Errorf("unmarshal user metadata: %w", err)
 		}
 	}
-
-	return &o, nil
+	return nil
 }
+
 
 func scanObjectRow(rows *sql.Rows) (*Object, error) {
 	var o Object
@@ -381,26 +389,8 @@ func scanObjectRow(rows *sql.Rows) (*Object, error) {
 		return nil, fmt.Errorf("scan object row: %w", err)
 	}
 
-	o.ChecksumCRC32 = csCRC32.String
-	o.ChecksumCRC32C = csCRC32C.String
-	o.ChecksumCRC64NVME = csCRC64NVME.String
-	o.ChecksumSHA1 = csSHA1.String
-	o.ChecksumSHA256 = csSHA256.String
-
-	var err error
-	o.CreatedAt, err = parseTimestamp(createdAt)
-	if err != nil {
+	if err := applyScannedExtras(&o, createdAt, updatedAt, metaStr, csCRC32, csCRC32C, csCRC64NVME, csSHA1, csSHA256); err != nil {
 		return nil, err
-	}
-	o.UpdatedAt, err = parseTimestamp(updatedAt)
-	if err != nil {
-		return nil, err
-	}
-
-	if metaStr.Valid && metaStr.String != "" {
-		if err := json.Unmarshal([]byte(metaStr.String), &o.UserMetadata); err != nil {
-			return nil, fmt.Errorf("unmarshal user metadata: %w", err)
-		}
 	}
 
 	return &o, nil

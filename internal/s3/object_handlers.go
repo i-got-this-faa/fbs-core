@@ -136,18 +136,23 @@ func (h *ObjectHandlers) PutObject(w http.ResponseWriter, r *http.Request) {
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
-
+	cs := pipeline.Checksums()
 	obj := &metadata.Object{
-		ID:           h.newID(),
-		BucketName:   bucketName,
-		Key:          key,
-		Size:         size,
-		ETag:         pipeline.ETag(),
-		ContentType:  contentType,
-		StoragePath:  storagePath,
-		CreatedAt:    now,
-		UpdatedAt:    now,
-		UserMetadata: parseMetadataHeaders(r),
+		ID:                h.newID(),
+		BucketName:        bucketName,
+		Key:               key,
+		Size:              size,
+		ETag:              pipeline.ETag(),
+		ContentType:       contentType,
+		StoragePath:       storagePath,
+		CreatedAt:         now,
+		UpdatedAt:         now,
+		UserMetadata:      parseMetadataHeaders(r),
+		ChecksumCRC32:     cs["x-amz-checksum-crc32"],
+		ChecksumCRC32C:    cs["x-amz-checksum-crc32c"],
+		ChecksumCRC64NVME: cs["x-amz-checksum-crc64nvme"],
+		ChecksumSHA1:      cs["x-amz-checksum-sha1"],
+		ChecksumSHA256:    cs["x-amz-checksum-sha256"],
 	}
 
 	if err := h.Objects.Create(r.Context(), obj); err != nil {
@@ -217,7 +222,7 @@ func (h *ObjectHandlers) handlePartNumber(w http.ResponseWriter, r *http.Request
 			return true
 		}
 		// PartNumber=1 on a non-multipart object returns the full object.
-		w.Header().Set("x-amz-mp-parts-count", "1")
+		// x-amz-mp-parts-count is only returned for multipart objects.
 		return false
 	}
 
@@ -226,44 +231,64 @@ func (h *ObjectHandlers) handlePartNumber(w http.ResponseWriter, r *http.Request
 		return true
 	}
 
+	// For multipart objects, serve the full object with part metadata headers.
+	// Full per-part range serving requires storing per-part sizes in object metadata.
 	w.Header().Set("x-amz-mp-parts-count", strconv.Itoa(obj.PartsCount))
 	return false
 }
-
-// GetObjectAttributes handles GET /{bucket}/{key}?attributes.
 func (h *ObjectHandlers) GetObjectAttributes(w http.ResponseWriter, r *http.Request) {
 	bucketName, key := objectRouteParams(r)
 	obj, ok := h.loadObjectForRead(w, r, bucketName, key)
 	if !ok {
 		return
 	}
+	// AWS requires this header; default to all if not provided.
+	attrHeader := r.Header.Get("x-amz-object-attributes")
+	requested := make(map[string]bool)
+	if attrHeader != "" {
+		for _, attr := range strings.Split(attrHeader, ",") {
+			requested[strings.TrimSpace(strings.ToLower(attr))] = true
+		}
+	} else {
+		// If no header, return all attributes (broad compatibility).
+		requested["etag"] = true
+		requested["checksum"] = true
+		requested["objectparts"] = true
+		requested["storageclass"] = true
+	}
 
 	var objectParts *ObjectPartsInfo
-	if obj.IsMultipart {
+	if obj.IsMultipart && requested["objectparts"] {
 		objectParts = &ObjectPartsInfo{PartsCount: obj.PartsCount}
 	}
 
 	var checksum *ObjectChecksum
-	if obj.ChecksumCRC32 != "" || obj.ChecksumCRC32C != "" || obj.ChecksumCRC64NVME != "" || obj.ChecksumSHA1 != "" || obj.ChecksumSHA256 != "" {
+	if requested["checksum"] && (obj.ChecksumCRC32 != "" || obj.ChecksumCRC32C != "" || obj.ChecksumCRC64NVME != "" || obj.ChecksumSHA1 != "" || obj.ChecksumSHA256 != "") {
 		checksum = &ObjectChecksum{
-			ChecksumCRC32:    obj.ChecksumCRC32,
-			ChecksumCRC32C:   obj.ChecksumCRC32C,
+			ChecksumCRC32:     obj.ChecksumCRC32,
+			ChecksumCRC32C:    obj.ChecksumCRC32C,
 			ChecksumCRC64NVME: obj.ChecksumCRC64NVME,
-			ChecksumSHA1:     obj.ChecksumSHA1,
-			ChecksumSHA256:   obj.ChecksumSHA256,
+			ChecksumSHA1:      obj.ChecksumSHA1,
+			ChecksumSHA256:    obj.ChecksumSHA256,
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/xml")
-	w.WriteHeader(http.StatusOK)
-	_ = xml.NewEncoder(w).Encode(GetObjectAttributesResult{
-		ETag:         quoteETag(obj.ETag),
+	result := GetObjectAttributesResult{
 		LastModified: obj.UpdatedAt.Format(time.RFC3339),
 		ObjectSize:   obj.Size,
-		StorageClass: "STANDARD",
-		ObjectParts:  objectParts,
-		Checksum:     checksum,
-	})
+	}
+	if requested["etag"] {
+		result.ETag = quoteETag(obj.ETag)
+	}
+	if requested["storageclass"] {
+		result.StorageClass = "STANDARD"
+	}
+	result.ObjectParts = objectParts
+	result.Checksum = checksum
+
+	w.Header().Set("Content-Type", "application/xml")
+	w.WriteHeader(http.StatusOK)
+	_ = xml.NewEncoder(w).Encode(result)
 }
 
 func (h *ObjectHandlers) DeleteObject(w http.ResponseWriter, r *http.Request) {

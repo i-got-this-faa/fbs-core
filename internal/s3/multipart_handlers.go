@@ -360,17 +360,14 @@ func (h *ObjectHandlers) ListParts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Filter parts by marker.
-	found := false
+	startIdx := len(parts)
 	for i, p := range parts {
 		if p.PartNumber > partNumberMarker {
-			parts = parts[i:]
-			found = true
+			startIdx = i
 			break
 		}
 	}
-	if !found {
-		parts = nil
-	}
+	parts = parts[startIdx:]
 
 	isTruncated := len(parts) > maxParts
 	if isTruncated {
@@ -964,8 +961,9 @@ func (h *ObjectHandlers) UploadPartCopy(w http.ResponseWriter, r *http.Request) 
 	})
 }
 
-// parseByteRange parses an x-amz-copy-source-range value in the format "bytes=start-end"
-// and clamps to the object size.
+// parseByteRange parses an x-amz-copy-source-range value in the format "bytes=start-end".
+// Returns a parse error (leading to a 416/400 response) for out-of-range values,
+// not a clamped range.
 func parseByteRange(rangeHeader string, objectSize int64) (start, end int64, err error) {
 	const prefix = "bytes="
 	if !strings.HasPrefix(rangeHeader, prefix) {

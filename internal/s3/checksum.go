@@ -142,7 +142,7 @@ func addCRC64NVME(header http.Header, writers *[]io.Writer, checks *[]checksumCh
 	}
 	expected, err := decodeChecksum(value)
 	if err != nil || len(expected) != crc64.Size {
-		return fmt.Errorf("%s: %w", headerName, errInvalidDigest)
+		return fmt.Errorf("%s: %w", headerName, errInvalidChecksum)
 	}
 	h := crc64.New(crc64.MakeTable(crc64.ECMA))
 	*writers = append(*writers, h)

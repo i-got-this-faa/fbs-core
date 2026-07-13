@@ -12,8 +12,17 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WORKDIR="${FBS_S3_TESTS_WORKDIR:-${SCRIPT_DIR}/.workdir}"
+MODE="core"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --core) MODE="core"; shift ;;
+    --full) MODE="full"; shift ;;
+    --) shift; break ;;
+    *) break ;;
+  esac
+done
 LOG="${1:-}"
+WORKDIR="${FBS_S3_TESTS_WORKDIR:-${SCRIPT_DIR}/.workdir}"
 OUT_DIR="${SCRIPT_DIR}/results"
 MARKERS_FILE="${SCRIPT_DIR}/markers.core"
 S3_TESTS_DIR="${WORKDIR}/s3-tests"
@@ -39,15 +48,8 @@ mkdir -p "${OUT_DIR}"
 # shellcheck disable=SC1091
 source "${VENV_DIR}/bin/activate"
 
-MARKER_EXPR="$(awk '
-  /^[[:space:]]*#/ { next }
-  /^[[:space:]]*$/ { next }
-  {
-    gsub(/^[[:space:]]+|[[:space:]]+$/, "")
-    if (n++) printf " and "
-    printf "%s", $0
-  }
-' "${MARKERS_FILE}")"
+  source "${SCRIPT_DIR}/lib/marker-expr.sh"
+  MARKER_EXPR="$(build_marker_expr "${MARKERS_FILE}")"
 
 # Prefer conf from workdir if present (collect-only still reads S3TEST_CONF)
 export S3TEST_CONF="${WORKDIR}/s3tests.conf"
@@ -110,8 +112,14 @@ COLLECT="${OUT_DIR}/selected-tests.txt"
   else
     PY=python
   fi
-  "${PY}" -m pytest --collect-only -q -m "${MARKER_EXPR}" s3tests/functional 2>/dev/null \
-    | awk '/^s3tests\// {print}' >"${COLLECT}"
+  if [[ "${MODE}" == "core" ]]; then
+    "${PY}" -m pytest --collect-only -q -m "${MARKER_EXPR}" \
+      s3tests/functional/test_s3.py s3tests/functional/test_headers.py s3tests/functional/test_utils.py 2>/dev/null \
+      | awk '/^s3tests\// {print}' >"${COLLECT}"
+  else
+    "${PY}" -m pytest --collect-only -q -m "${MARKER_EXPR}" s3tests/functional 2>/dev/null \
+      | awk '/^s3tests\// {print}' >"${COLLECT}"
+  fi
 )
 
 python3 - "${LOG}" "${COLLECT}" "${OUT_DIR}" <<'PY'
@@ -151,8 +159,18 @@ for line in log.splitlines():
             rest = rest.split(" - ", 1)[0]
         errored.add(rest.strip())
 
-failed_m = {s for s in selected if s in failed or any(s.startswith(f) or f.startswith(s) for f in failed)}
-errored_m = {s for s in selected if s in errored or any(s.startswith(e) or e.startswith(s) for e in errored)}
+def _matches(selected, failed):
+    # exact match
+    if selected == failed:
+        return True
+    # bracket-suffix variance: nodeid[param]
+    bracket = selected.find("[")
+    if bracket >= 0 and selected[:bracket] == failed:
+        return True
+    return False
+
+failed_m = {s for s in selected if any(_matches(s, f) for f in failed)}
+errored_m = {s for s in selected if any(_matches(s, e) for e in errored)}
 passed = [s for s in selected if s not in failed_m and s not in errored_m]
 
 def test_name(nodeid: str) -> str:
@@ -179,11 +197,11 @@ def category(nodeid: str) -> str:
         ("Copy Object", [r"copy_obj", r"copy_object", r"upload_part_copy"]),
         ("Checksums", [r"checksum", r"cksum", r"content_md5", r"bad_md5", r"sha256", r"sha1", r"crc32", r"crc64"]),
         ("List Objects", [r"bucket_list", r"listv2", r"list_objects", r"delimiter", r"prefix", r"marker", r"pagination", r"encoding", r"key_count", r"list_many", r"list_empty", r"list_distinct"]),
+        ("Conditional Requests", [r"ifmatch", r"ifnonematch", r"if_match", r"if_none", r"ifmodified"]),
+        ("Object Attributes / Torrent", [r"object_attributes", r"torrent"]),
         ("Get / Head / Range", [r"ranged", r"range_request", r"get_object", r"head_object", r"read_unreadable", r"object_read"]),
         ("Put / Delete Object", [r"object_create", r"put_object", r"delete_object", r"multi_object_delete", r"object_write", r"object_delete"]),
         ("Bucket Ops", [r"bucket_create", r"bucket_delete", r"bucket_head", r"location", r"bucket_notexist", r"bucket_recreate"]),
-        ("Conditional Requests", [r"ifmatch", r"ifnonematch", r"if_match", r"if_none", r"ifmodified"]),
-        ("Object Attributes / Torrent", [r"object_attributes", r"torrent"]),
         ("Tagging", [r"tagging", r"\btag_"]),
         ("Lifecycle", [r"lifecycle"]),
         ("Encryption / SSE", [r"sse_", r"encryption", r"\bkms\b"]),
@@ -197,10 +215,11 @@ def category(nodeid: str) -> str:
     return "Other / Uncategorized"
 
 order = [
-    "Bucket Ops", "Put / Delete Object", "Get / Head / Range", "List Objects",
+    "Bucket Ops", "Conditional Requests", "Object Attributes / Torrent",
+    "Put / Delete Object", "Get / Head / Range", "List Objects",
     "Multipart Upload", "Copy Object", "Checksums", "Headers / Auth edge cases",
-    "Conditional Requests", "ACL / Public Access", "Bucket Policy", "Versioning",
-    "Object Lock / WORM", "Object Attributes / Torrent", "IAM / STS / OIDC",
+    "ACL / Public Access", "Bucket Policy", "Versioning",
+    "Object Lock / WORM", "IAM / STS / OIDC",
     "Tagging", "Lifecycle", "Encryption / SSE", "Website", "Logging",
     "Utils / Misc", "Other / Uncategorized",
 ]

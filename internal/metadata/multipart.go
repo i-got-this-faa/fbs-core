@@ -419,8 +419,10 @@ func (r *sqliteMultipartUploadRepository) CompleteUpload(ctx context.Context, ob
 	}
 
 	const createQ = `
-		INSERT INTO objects (id, bucket_name, key, size, etag, content_type, storage_path, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO objects (id, bucket_name, key, size, etag, content_type, storage_path, created_at, updated_at,
+			is_multipart, parts_count, checksum_crc32, checksum_crc32c, checksum_crc64nvme, checksum_sha1, checksum_sha256, user_metadata)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,
+			?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(bucket_name, key) DO UPDATE SET
 			id = excluded.id,
 			size = excluded.size,
@@ -428,7 +430,15 @@ func (r *sqliteMultipartUploadRepository) CompleteUpload(ctx context.Context, ob
 			content_type = excluded.content_type,
 			storage_path = excluded.storage_path,
 			created_at = excluded.created_at,
-			updated_at = excluded.updated_at`
+			updated_at = excluded.updated_at,
+			is_multipart = excluded.is_multipart,
+			parts_count = excluded.parts_count,
+			checksum_crc32 = excluded.checksum_crc32,
+			checksum_crc32c = excluded.checksum_crc32c,
+			checksum_crc64nvme = excluded.checksum_crc64nvme,
+			checksum_sha1 = excluded.checksum_sha1,
+			checksum_sha256 = excluded.checksum_sha256,
+			user_metadata = excluded.user_metadata`
 
 	if obj.CreatedAt.IsZero() {
 		obj.CreatedAt = time.Now().UTC()
@@ -438,9 +448,24 @@ func (r *sqliteMultipartUploadRepository) CompleteUpload(ctx context.Context, ob
 	}
 	now := obj.CreatedAt.UTC()
 
+	var metaStr *string
+	if len(obj.UserMetadata) > 0 {
+		b, err := json.Marshal(obj.UserMetadata)
+		if err != nil {
+			return "", fmt.Errorf("marshal user metadata: %w", err)
+		}
+		s := string(b)
+		metaStr = &s
+	}
+
+
 	if _, err := conn.ExecContext(ctx, createQ,
 		obj.ID, obj.BucketName, obj.Key, obj.Size, obj.ETag,
 		obj.ContentType, obj.StoragePath, now, obj.UpdatedAt.UTC(),
+		obj.IsMultipart, obj.PartsCount,
+		nullify(obj.ChecksumCRC32), nullify(obj.ChecksumCRC32C), nullify(obj.ChecksumCRC64NVME),
+		nullify(obj.ChecksumSHA1), nullify(obj.ChecksumSHA256),
+		metaStr,
 	); err != nil {
 		return "", fmt.Errorf("create object: %w", err)
 	}
@@ -498,7 +523,7 @@ func (r *sqliteMultipartUploadRepository) ListByBucket(ctx context.Context, buck
 		SELECT id, bucket_name, key, content_type, status, created_at, status_updated_at, checksum_algorithm, user_metadata
 		FROM multipart_uploads
 		WHERE bucket_name = ?
-		  AND (? = '' OR key LIKE ? || '%')
+		  AND (? = '' OR (substr(key, 1, length(?)) = ? AND key < ?))
 		  AND (key > ? OR (key = ? AND id > ?))
 		ORDER BY key, id
 		LIMIT ?`
@@ -506,7 +531,7 @@ func (r *sqliteMultipartUploadRepository) ListByBucket(ctx context.Context, buck
 	// We query maxUploads+1 to detect truncation.
 	limit := maxUploads + 1
 
-	rows, err := r.db.QueryContext(ctx, q, bucketName, prefix, keyMarker, keyMarker, uploadIDMarker, limit)
+	rows, err := r.db.QueryContext(ctx, q, bucketName, prefix, prefix, prefix, prefix+"zzzzzzzz", keyMarker, keyMarker, uploadIDMarker, limit)
 	if err != nil {
 		return nil, false, "", "", fmt.Errorf("list multipart uploads by bucket: %w", err)
 	}

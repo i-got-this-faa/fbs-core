@@ -58,16 +58,24 @@ def nuke_bucket(client, bucket):
     """Best-effort empty + delete for non-versioning servers."""
     batch_size = 128
     for objects in list_versions(client, bucket, batch_size):
-        keys = [{{'Key': o['Key']}} for o in objects]
+        keys = []
+        for o in objects:
+            entry = {{'Key': o['Key']}}
+            if 'VersionId' in o and o.get('VersionId'):
+                entry['VersionId'] = o['VersionId']
+            keys.append(entry)
         try:
             client.delete_objects(
                 Bucket=bucket,
                 Delete={{'Objects': keys, 'Quiet': True}},
             )
         except ClientError:
-            for obj in keys:
+            for obj in objects:
+                kwargs = {{'Bucket': bucket, 'Key': obj['Key']}}
+                if 'VersionId' in obj and obj.get('VersionId'):
+                    kwargs['VersionId'] = obj['VersionId']
                 try:
-                    client.delete_object(Bucket=bucket, Key=obj['Key'])
+                    client.delete_object(**kwargs)
                 except ClientError:
                     pass
 

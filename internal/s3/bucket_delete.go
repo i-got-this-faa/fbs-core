@@ -3,7 +3,9 @@ package s3
 import (
 	"errors"
 	"net/http"
-	"strings"
+
+	sqlite "modernc.org/sqlite"
+	lib "modernc.org/sqlite/lib"
 
 	"github.com/i-got-this-faa/fbs/internal/authz"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
@@ -28,22 +30,29 @@ func (h *ObjectHandlers) DeleteBucket(w http.ResponseWriter, r *http.Request) {
 
 	// Abort any pending multipart uploads before deleting the bucket.
 	// S3 allows deleting buckets with pending multipart uploads, but our FK
-	// constraint requires them to be removed first.
-	uploads, _, _, _, listErr := h.MultipartUploads.ListByBucket(r.Context(), bucketName, "", "", "", 1000)
-	if listErr != nil {
-		h.logError("list multipart uploads for bucket deletion", listErr, bucketName, "", "")
-		WriteS3Error(w, r, http.StatusInternalServerError, codeInternalError, messageInternalError)
-		return
-	}
-	for _, upload := range uploads {
-		if delErr := h.MultipartUploads.Delete(r.Context(), upload.ID); delErr != nil {
-			h.logError("delete multipart upload during bucket deletion", delErr, bucketName, upload.Key, upload.ID)
+	// constraint requires them to be removed first. Paginate through all
+	// uploads since there may be more than 1000.
+	const maxAbortIterations = 10 // safety ceiling (10K uploads at 1K/batch)
+	for range maxAbortIterations {
+		uploads, _, _, _, listErr := h.MultipartUploads.ListByBucket(r.Context(), bucketName, "", "", "", 1000)
+		if listErr != nil {
+			h.logError("list multipart uploads for bucket deletion", listErr, bucketName, "", "")
+			WriteS3Error(w, r, http.StatusInternalServerError, codeInternalError, messageInternalError)
+			return
 		}
-		ctx, cancel := withCleanupTimeout()
-		if storErr := h.Storage.DeleteUploadParts(ctx, upload.ID); storErr != nil {
-			h.logError("delete upload parts during bucket deletion", storErr, bucketName, upload.Key, upload.ID)
+		if len(uploads) == 0 {
+			break
 		}
-		cancel()
+		for _, upload := range uploads {
+			if delErr := h.MultipartUploads.Delete(r.Context(), upload.ID); delErr != nil {
+				h.logError("delete multipart upload during bucket deletion", delErr, bucketName, upload.Key, upload.ID)
+			}
+			ctx, cancel := withCleanupTimeout()
+			if storErr := h.Storage.DeleteUploadParts(ctx, upload.ID); storErr != nil {
+				h.logError("delete upload parts during bucket deletion", storErr, bucketName, upload.Key, upload.ID)
+			}
+			cancel()
+		}
 	}
 
 	err = h.Buckets.Delete(r.Context(), bucketName)
@@ -72,7 +81,9 @@ func isSQLiteForeignKeyError(err error) bool {
 	if err == nil {
 		return false
 	}
-	// SQLite: "FOREIGN KEY constraint failed" (and variants). Do not match
-	// other constraint types (e.g. UNIQUE) as BucketNotEmpty.
-	return strings.Contains(strings.ToLower(err.Error()), "foreign key")
+	var sqliteErr *sqlite.Error
+	if errors.As(err, &sqliteErr) {
+		return sqliteErr.Code() == lib.SQLITE_CONSTRAINT_FOREIGNKEY
+	}
+	return false
 }

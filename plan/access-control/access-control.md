@@ -715,7 +715,8 @@ changes):
 The system is correct with respect to this architecture when all of the
 following hold:
 
-1. A member can receive read-only access to another user’s bucket and
+1. A member can receive read-only object GET access (mapped to `s3:GetObject`) or
+   bucket-list access (mapped to `s3:ListBucket`) via separate grants, and
    successfully get/list within grant scope without Management admin.
 2. A member can receive write access limited to a key prefix and cannot
    read or write outside that prefix.

@@ -19,11 +19,14 @@ func (h *ObjectHandlers) ListObjectVersions(w http.ResponseWriter, r *http.Reque
 
 	maxKeys := 1000
 	if v := r.URL.Query().Get("max-keys"); v != "" {
-		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
-			maxKeys = parsed
-			if maxKeys > 1000 {
-				maxKeys = 1000
-			}
+		parsed, err := strconv.Atoi(v)
+		if err != nil || parsed <= 0 {
+			WriteS3Error(w, r, http.StatusBadRequest, codeInvalidArgument, messageInvalidArgument)
+			return
+		}
+		maxKeys = parsed
+		if maxKeys > 1000 {
+			maxKeys = 1000
 		}
 	}
 
@@ -42,8 +45,8 @@ func (h *ObjectHandlers) ListObjectVersions(w http.ResponseWriter, r *http.Reque
 			Key:          obj.Key,
 			VersionID:    "null",
 			IsLatest:     true,
-			LastModified: obj.CreatedAt.Format(time.RFC3339),
-			ETag:         obj.ETag,
+			LastModified: obj.UpdatedAt.Format(time.RFC3339),
+			ETag:         quoteETag(obj.ETag),
 			Size:         obj.Size,
 			StorageClass: "STANDARD",
 		})

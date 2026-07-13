@@ -223,15 +223,7 @@ CREATE INDEX IF NOT EXISTS idx_grants_bucket
 		name:    "add multipart part checksums",
 		run: func(tx *sql.Tx) error {
 			for _, col := range []string{"checksum_crc32", "checksum_crc32c", "checksum_crc64nvme", "checksum_sha1", "checksum_sha256"} {
-				var count int
-				err := tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('multipart_parts') WHERE name = ?`, col).Scan(&count)
-				if err != nil {
-					return err
-				}
-				if count > 0 {
-					continue
-				}
-				if _, err := tx.Exec(`ALTER TABLE multipart_parts ADD COLUMN ` + col + ` TEXT`); err != nil {
+				if err := addColumnIfMissing(tx, "multipart_parts", col, "TEXT", ""); err != nil {
 					return err
 				}
 			}
@@ -242,28 +234,15 @@ CREATE INDEX IF NOT EXISTS idx_grants_bucket
 		version: 10,
 		name:    "add object is_multipart and checksums",
 		run: func(tx *sql.Tx) error {
-			columns := []struct{ name, typ, def string }{
+			for _, col := range []struct{ name, typ, def string }{
 				{"is_multipart", "INTEGER", "0"},
 				{"checksum_crc32", "TEXT", ""},
 				{"checksum_crc32c", "TEXT", ""},
 				{"checksum_crc64nvme", "TEXT", ""},
 				{"checksum_sha1", "TEXT", ""},
 				{"checksum_sha256", "TEXT", ""},
-			}
-			for _, col := range columns {
-				var count int
-				err := tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('objects') WHERE name = ?`, col.name).Scan(&count)
-				if err != nil {
-					return err
-				}
-				if count > 0 {
-					continue
-				}
-				sql := `ALTER TABLE objects ADD COLUMN ` + col.name + ` ` + col.typ
-				if col.def != "" {
-					sql += ` NOT NULL DEFAULT ` + col.def
-				}
-				if _, err := tx.Exec(sql); err != nil {
+			} {
+				if err := addColumnIfMissing(tx, "objects", col.name, col.typ, col.def); err != nil {
 					return err
 				}
 			}
@@ -278,19 +257,7 @@ CREATE INDEX IF NOT EXISTS idx_grants_bucket
 				{"checksum_algorithm", "TEXT", ""},
 				{"user_metadata", "TEXT", ""},
 			} {
-				var count int
-				err := tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('multipart_uploads') WHERE name = ?`, col.name).Scan(&count)
-				if err != nil {
-					return err
-				}
-				if count > 0 {
-					continue
-				}
-				sql := `ALTER TABLE multipart_uploads ADD COLUMN ` + col.name + ` ` + col.typ
-				if col.def != "" {
-					sql += ` NOT NULL DEFAULT ` + col.def
-				}
-				if _, err := tx.Exec(sql); err != nil {
+				if err := addColumnIfMissing(tx, "multipart_uploads", col.name, col.typ, col.def); err != nil {
 					return err
 				}
 			}
@@ -298,25 +265,33 @@ CREATE INDEX IF NOT EXISTS idx_grants_bucket
 				{"parts_count", "INTEGER", "0"},
 				{"user_metadata", "TEXT", ""},
 			} {
-				var count int
-				err := tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('objects') WHERE name = ?`, col.name).Scan(&count)
-				if err != nil {
-					return err
-				}
-				if count > 0 {
-					continue
-				}
-				sql := `ALTER TABLE objects ADD COLUMN ` + col.name + ` ` + col.typ
-				if col.def != "" {
-					sql += ` NOT NULL DEFAULT ` + col.def
-				}
-				if _, err := tx.Exec(sql); err != nil {
+				if err := addColumnIfMissing(tx, "objects", col.name, col.typ, col.def); err != nil {
 					return err
 				}
 			}
 			return nil
 		},
 	},
+}
+
+// addColumnIfMissing adds a column to a table if it doesn't already exist.
+func addColumnIfMissing(tx *sql.Tx, table, name, typ, def string) error {
+	var count int
+	err := tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('`+table+`') WHERE name = ?`, name).Scan(&count)
+	if err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+	sql := `ALTER TABLE ` + table + ` ADD COLUMN ` + name + ` ` + typ
+	if def != "" {
+		sql += ` NOT NULL DEFAULT ` + def
+	}
+	if _, err := tx.Exec(sql); err != nil {
+		return err
+	}
+	return nil
 }
 
 func ensureMigrationsTable(db *sql.DB) error {
