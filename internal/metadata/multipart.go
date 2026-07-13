@@ -498,7 +498,7 @@ func (r *sqliteMultipartUploadRepository) ListByBucket(ctx context.Context, buck
 		SELECT id, bucket_name, key, content_type, status, created_at, status_updated_at, checksum_algorithm, user_metadata
 		FROM multipart_uploads
 		WHERE bucket_name = ?
-		  AND key >= COALESCE(NULLIF(?, ''), key)
+		  AND (? = '' OR key LIKE ? || '%')
 		  AND (key > ? OR (key = ? AND id > ?))
 		ORDER BY key, id
 		LIMIT ?`
