@@ -3,6 +3,7 @@ package migrations
 import (
 	"database/sql"
 	"fmt"
+	"regexp"
 )
 
 type migration struct {
@@ -277,7 +278,18 @@ CREATE INDEX IF NOT EXISTS idx_grants_bucket
 // addColumnIfMissing adds a column to a table if it doesn't already exist.
 // Only trusted literal strings may be passed — all arguments are interpolated
 // directly into SQL with no parameterization.
+// validSQLIdentifier matches simple SQLite identifiers: letter/digit/underscore,
+// starting with a letter. Used to guard against SQL injection in DDL helpers
+// that build statements from string concatenation.
+var validSQLIdentifier = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]*$`)
+
+// addColumnIfMissing adds a column to a table if it does not already exist.
+// All arguments must be trusted literal strings (compile-time constants).
+// Passing runtime/user input will cause SQL injection.
 func addColumnIfMissing(tx *sql.Tx, table, name, typ, def string) error {
+	if !validSQLIdentifier.MatchString(table) || !validSQLIdentifier.MatchString(name) {
+		return fmt.Errorf("addColumnIfMissing: invalid identifier (table=%q, name=%q)", table, name)
+	}
 	var count int
 	err := tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('`+table+`') WHERE name = ?`, name).Scan(&count)
 	if err != nil {

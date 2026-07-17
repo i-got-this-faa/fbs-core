@@ -134,6 +134,11 @@ func addCRC32Check(header http.Header, headerName string, table *crc32.Table, wr
 	return nil
 }
 
+// crc64NVMeTable uses the Jones polynomial (0xad93d23594c93659) required by
+// the NVMe specification and AWS S3's x-amz-checksum-crc64nvme header.
+// This differs from crc64.ECMA and crc64.ISO which are in Go's stdlib.
+var crc64NVMeTable = crc64.MakeTable(0xad93d23594c93659)
+
 func addCRC64NVME(header http.Header, writers *[]io.Writer, checks *[]checksumCheck) error {
 	headerName := "x-amz-checksum-crc64nvme"
 	value := strings.TrimSpace(header.Get(headerName))
@@ -144,7 +149,7 @@ func addCRC64NVME(header http.Header, writers *[]io.Writer, checks *[]checksumCh
 	if err != nil || len(expected) != crc64.Size {
 		return fmt.Errorf("%s: %w", headerName, errInvalidChecksum)
 	}
-	h := crc64.New(crc64.MakeTable(crc64.ECMA))
+	h := crc64.New(crc64NVMeTable)
 	*writers = append(*writers, h)
 	*checks = append(*checks, checksumCheck{
 		name:     headerName,

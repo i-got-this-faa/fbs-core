@@ -302,7 +302,7 @@ func (h *ObjectHandlers) ListParts(w http.ResponseWriter, r *http.Request) {
 		WriteS3Error(w, r, http.StatusBadRequest, codeInvalidRequest, messageInvalidRequest)
 		return
 	}
-	if !h.ensureBucketAction(w, r, bucketName, authz.ActionPutObject, key, "") {
+	if !h.ensureBucketAction(w, r, bucketName, authz.ActionListMultipartUploadParts, key, "") {
 		return
 	}
 
@@ -415,11 +415,11 @@ func (h *ObjectHandlers) ListParts(w http.ResponseWriter, r *http.Request) {
 // CompleteMultipartUpload handles POST /{bucket}/{key}?uploadId={id}.
 func (h *ObjectHandlers) CompleteMultipartUpload(w http.ResponseWriter, r *http.Request) {
 	bucketName, key := objectRouteParams(r)
-	if !h.ensureBucketAction(w, r, bucketName, authz.ActionPutObject, key, "") {
-		return
-	}
 	if key == "" {
 		WriteS3Error(w, r, http.StatusBadRequest, codeInvalidRequest, messageInvalidRequest)
+		return
+	}
+	if !h.ensureBucketAction(w, r, bucketName, authz.ActionPutObject, key, "") {
 		return
 	}
 
@@ -785,11 +785,11 @@ func (h *ObjectHandlers) AbortMultipartUpload(w http.ResponseWriter, r *http.Req
 // UploadPartCopy handles PUT /{bucket}/{key}?partNumber={n}&uploadId={id} with x-amz-copy-source.
 func (h *ObjectHandlers) UploadPartCopy(w http.ResponseWriter, r *http.Request) {
 	bucketName, key := objectRouteParams(r)
-	if !h.ensureBucketAction(w, r, bucketName, authz.ActionPutObject, key, "") {
-		return
-	}
 	if key == "" {
 		WriteS3Error(w, r, http.StatusBadRequest, codeInvalidRequest, messageInvalidRequest)
+		return
+	}
+	if !h.ensureBucketAction(w, r, bucketName, authz.ActionPutObject, key, "") {
 		return
 	}
 
