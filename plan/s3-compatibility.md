@@ -27,22 +27,24 @@ Status labels used below:
 
 ## Implemented S3 Features
 
-| Feature | Notes |
-|---|---|
-| ListBuckets | |
-| CreateBucket / HeadBucket / DeleteBucket | Delete on empty buckets only |
-| GetBucketLocation | Config-defined single region |
-| ListObjectsV1 / V2 | Prefix, delimiter, start-after, max-keys |
-| PutObject / GetObject / HeadObject / DeleteObject | |
-| DeleteObjects (multi-delete) | |
-| CopyObject | |
-| Multipart upload | Initiate, upload parts, complete, abort, list parts |
-| SigV4 header auth | |
-| SigV4 query-string auth | |
-| Presigned GET URLs (public read) | Via management API; requires `FBS_PUBLIC_READ_SIGNING_SECRET` |
-| ETags | |
+| Feature | Test pass rate | Notes |
+|---|---|---|
+| ListBuckets | not tested | Covered by Go unit tests |
+| CreateBucket / HeadBucket / DeleteBucket | 78% (14/18) | `test_bucket_create_exists`, `test_bucket_get_location`, `test_bucket_recreate_not_overriding`, `test_bucket_create_special_key_names` fail |
+| GetBucketLocation | **0% (0/1)** | `test_bucket_get_location` fails — see above |
+| ListObjectsV1 / V2 | 81% (67/83) | Strong coverage. Failures in encoding, anonymous access, some prefix+delimiter edge cases |
+| PutObject / GetObject / HeadObject / DeleteObject | 46% (6/13) | CORS presigned puts fail. Cache-Control, Expires headers not forwarded. Bucket-gone edge case fails |
+| DeleteObjects (multi-delete) | tested within Put/Delete | Two tests pass (key limit, basic) |
+| CopyObject | 50% (2/4) | Conditional copy edge cases fail (`if-match`, `if-none-match`) |
+| Multipart upload | 56% (23/41) | Core flow works. Checksum-related uploads, object attributes, conditional puts, and `test_multipart_get_part` fail |
+| SigV4 header auth | not directly tested | Covered by Go unit tests |
+| SigV4 query-string auth | tested via presigned | |
+| Presigned URLs (public read) | not tested | Covered by Go unit tests |
+| ETags | tested within Put/Delete | `test_object_write_check_etag` passes |
+| Conditional requests (GET) | 45% (5/11) | GET if-match/if-modified-since works. PUT if-match/if-none-match all fail |
+| Object Attributes (`?attributes`) | **0% (0/2)** | `test_get_object_attributes` and `test_get_object_torrent` fail |
+| Checksum headers (SHA256, CRC32, etc.) | **0% (0/4)** | `test_object_checksum_crc64nvme`, `test_object_checksum_sha256`, `test_get_checksum_object_attributes`, `test_post_object_upload_checksum` fail |
 
-## Access control (identity & authorization)
 
 Today: authenticate with Bearer tokens or SigV4; authorize with admin role or
 bucket ownership. The access-control plan adds **mini-IAM grants** (fixed
@@ -180,6 +182,39 @@ guaranteed-green compatibility gate — see
 [`compat/s3-tests/markers.md`](../compat/s3-tests/markers.md).
 
 Claimed behavior is enforced by `go test ./...`, not by s3-tests CI gates.
+
+### Latest test results (2026-07-17)
+
+Run with `bash compat/s3-tests/run.sh --core` on commit `00e7f20`
+(staging/multipart merged into main). 441 tests selected, 446 deselected
+by markers. Full checklist: [`compat/s3-tests/results/checklist.md`](../compat/s3-tests/results/checklist.md)
+and [`compat/s3-tests/results/checklist.html`](../compat/s3-tests/results/checklist.html).
+
+| Feature area | Pass | Fail | Rate |
+|---|---:|---:|---:|
+| Bucket Ops | 14 | 4 | 78% |
+| Conditional Requests | 5 | 6 | 45% |
+| Object Attributes / Torrent | 0 | 2 | 0% |
+| Put / Delete Object | 6 | 7 | 46% |
+| Get / Head / Range | 6 | 9 | 40% |
+| List Objects | 67 | 16 | 81% |
+| Multipart Upload | 23 | 18 | 56% |
+| Copy Object | 2 | 2 | 50% |
+| Checksums | 0 | 4 | 0% |
+| Headers / Auth edge cases | 17 | 10 | 63% |
+| ACL / Public Access | 4 | 37 | 10% |
+| Bucket Policy | 0 | 7 | 0% |
+| Versioning | 0 | 32 | 0% |
+| Object Lock / WORM | 6 | 31 | 16% |
+| Utils / Misc | 1 | 0 | 100% |
+| Other / Uncategorized | 36 | 69 | 34% |
+| **Total** | **187** | **254** | **42%** |
+
+Expected failures come from deferred features (versioning, object lock), permanent non-goals
+(ACL, bucket policy, IAM), and known gaps (conditional PUTs, object attributes, checksum header
+end-to-end, some bucket-edge cases, CORS presigned URLs).
+Uncategorized failures are split between unmarked upstream tests in deferred feature areas
+and genuine edge cases not yet handled.
 
 ## When to Pick fbs-core Over AWS S3
 

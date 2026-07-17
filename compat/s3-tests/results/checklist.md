@@ -1,6 +1,6 @@
 # S3 Compatibility Checklist
 
-Generated from `compat/s3-tests/results/last-run.log` (2026-07-11 07:10 UTC).
+Generated from `compat/s3-tests/results/last-run.log` (2026-07-17 09:27 UTC).
 
 Source: ceph/s3-tests functional suite with `markers.core` filter.
 
@@ -8,38 +8,39 @@ Source: ceph/s3-tests functional suite with `markers.core` filter.
 
 | Status | Count |
 |--------|------:|
-| Passed | 150 |
-| Failed | 291 |
-| Errors | 2 |
-| Selected | 443 |
-| Pass rate | 33.9% |
+| Passed | 187 |
+| Failed | 254 |
+| Errors | 0 |
+| Selected | 441 |
+| Pass rate | 42.4% |
 
 ## Feature areas
 
 | Feature | Pass | Fail | Error | Rate |
 |---------|-----:|-----:|------:|-----:|
-| Bucket Ops | 13 | 5 | 0 | 72% |
-| Put / Delete Object | 6 | 10 | 0 | 38% |
-| Get / Head / Range | 11 | 12 | 0 | 48% |
-| List Objects | 64 | 19 | 0 | 77% |
-| Multipart Upload | 3 | 38 | 0 | 7% |
+| Bucket Ops | 14 | 4 | 0 | 78% |
+| Conditional Requests | 5 | 6 | 0 | 45% |
+| Object Attributes / Torrent | 0 | 2 | 0 | 0% |
+| Put / Delete Object | 6 | 7 | 0 | 46% |
+| Get / Head / Range | 6 | 9 | 0 | 40% |
+| List Objects | 67 | 16 | 0 | 81% |
+| Multipart Upload | 23 | 18 | 0 | 56% |
 | Copy Object | 2 | 2 | 0 | 50% |
 | Checksums | 0 | 4 | 0 | 0% |
 | Headers / Auth edge cases | 17 | 10 | 0 | 63% |
-| Conditional Requests | 0 | 2 | 0 | 0% |
 | ACL / Public Access | 4 | 37 | 0 | 10% |
 | Bucket Policy | 0 | 7 | 0 | 0% |
 | Versioning | 0 | 32 | 0 | 0% |
-| Object Lock / WORM | 1 | 36 | 0 | 3% |
-| IAM / STS / OIDC | 0 | 0 | 2 | 0% |
+| Object Lock / WORM | 6 | 31 | 0 | 16% |
 | Utils / Misc | 1 | 0 | 0 | 100% |
-| Other / Uncategorized | 28 | 77 | 0 | 27% |
+| Other / Uncategorized | 36 | 69 | 0 | 34% |
 
 Legend: `[x]` passed · `[ ]` failed · `[!]` error
 
-## Bucket Ops (13/18 passed)
+## Bucket Ops (14/18 passed)
 
 - [x] test_bucket_create_delete
+- [x] test_bucket_create_exists_nonowner
 - [x] test_bucket_create_naming_bad_short_one
 - [x] test_bucket_create_naming_bad_short_two
 - [x] test_bucket_create_naming_good_contains_hyphen
@@ -53,12 +54,30 @@ Legend: `[x]` passed · `[ ]` failed · `[!]` error
 - [x] test_bucket_head_notexist
 - [x] test_bucket_notexist
 - [ ] test_bucket_create_exists
-- [ ] test_bucket_create_exists_nonowner
 - [ ] test_bucket_create_special_key_names
 - [ ] test_bucket_get_location
 - [ ] test_bucket_recreate_not_overriding
 
-## Put / Delete Object (6/16 passed)
+## Conditional Requests (5/11 passed)
+
+- [x] test_get_object_ifmatch_good
+- [x] test_get_object_ifmodifiedsince_failed
+- [x] test_get_object_ifmodifiedsince_good
+- [x] test_get_object_ifnonematch_failed
+- [x] test_get_object_ifnonematch_good
+- [ ] test_get_object_ifmatch_failed
+- [ ] test_put_current_object_if_match
+- [ ] test_put_current_object_if_none_match
+- [ ] test_put_object_current_if_match
+- [ ] test_put_object_if_match
+- [ ] test_put_object_ifmatch_failed
+
+## Object Attributes / Torrent (0/2 passed)
+
+- [ ] test_get_object_attributes
+- [ ] test_get_object_torrent
+
+## Put / Delete Object (6/13 passed)
 
 - [x] test_multi_object_delete
 - [x] test_multi_object_delete_key_limit
@@ -73,17 +92,9 @@ Legend: `[x]` passed · `[ ]` failed · `[!]` error
 - [ ] test_object_delete_key_bucket_gone
 - [ ] test_object_write_cache_control
 - [ ] test_object_write_expires
-- [ ] test_put_object_current_if_match
-- [ ] test_put_object_if_match
-- [ ] test_put_object_ifmatch_failed
 
-## Get / Head / Range (11/23 passed)
+## Get / Head / Range (6/15 passed)
 
-- [x] test_get_object_ifmatch_good
-- [x] test_get_object_ifmodifiedsince_failed
-- [x] test_get_object_ifmodifiedsince_good
-- [x] test_get_object_ifnonematch_failed
-- [x] test_get_object_ifnonematch_good
 - [x] test_get_object_ifunmodifiedsince_failed
 - [x] test_object_read_not_exist
 - [x] test_ranged_big_request_response_code
@@ -94,16 +105,13 @@ Legend: `[x]` passed · `[ ]` failed · `[!]` error
 - [ ] test_cors_presigned_get_object_tenant
 - [ ] test_cors_presigned_get_object_tenant_v2
 - [ ] test_cors_presigned_get_object_v2
-- [ ] test_get_object_attributes
-- [ ] test_get_object_ifmatch_failed
 - [ ] test_get_object_ifunmodifiedsince_good
-- [ ] test_get_object_torrent
 - [ ] test_object_raw_get_object_gone
 - [ ] test_object_read_unreadable
 - [ ] test_ranged_request_empty_object
 - [ ] test_ranged_request_invalid_range
 
-## List Objects (64/83 passed)
+## List Objects (67/83 passed)
 
 - [x] test_basic_key_count
 - [x] test_bucket_list_delimiter_alt
@@ -113,6 +121,7 @@ Legend: `[x]` passed · `[ ]` failed · `[!]` error
 - [x] test_bucket_list_delimiter_none
 - [x] test_bucket_list_delimiter_not_exist
 - [x] test_bucket_list_delimiter_percentage
+- [x] test_bucket_list_delimiter_prefix_ends_with_delimiter
 - [x] test_bucket_list_delimiter_unreadable
 - [x] test_bucket_list_delimiter_whitespace
 - [x] test_bucket_list_distinct
@@ -123,6 +132,7 @@ Legend: `[x]` passed · `[ ]` failed · `[!]` error
 - [x] test_bucket_list_marker_none
 - [x] test_bucket_list_marker_not_in_list
 - [x] test_bucket_list_marker_unreadable
+- [x] test_bucket_list_maxkeys_invalid
 - [x] test_bucket_list_maxkeys_none
 - [x] test_bucket_list_maxkeys_one
 - [x] test_bucket_list_maxkeys_zero
@@ -136,6 +146,7 @@ Legend: `[x]` passed · `[ ]` failed · `[!]` error
 - [x] test_bucket_list_prefix_not_exist
 - [x] test_bucket_list_special_prefix
 - [x] test_bucket_listv2_both_continuationtoken_startafter
+- [x] test_bucket_listv2_continuationtoken
 - [x] test_bucket_listv2_delimiter_alt
 - [x] test_bucket_listv2_delimiter_basic
 - [x] test_bucket_listv2_delimiter_dot
@@ -171,17 +182,14 @@ Legend: `[x]` passed · `[ ]` failed · `[!]` error
 - [x] test_object_write_with_chunked_transfer_encoding
 - [ ] test_bucket_list_delimiter_not_skip_special
 - [ ] test_bucket_list_delimiter_prefix
-- [ ] test_bucket_list_delimiter_prefix_ends_with_delimiter
 - [ ] test_bucket_list_delimiter_prefix_underscore
 - [ ] test_bucket_list_encoding_basic
-- [ ] test_bucket_list_maxkeys_invalid
 - [ ] test_bucket_list_objects_anonymous
 - [ ] test_bucket_list_objects_anonymous_fail
 - [ ] test_bucket_list_prefix_basic
 - [ ] test_bucket_list_prefix_delimiter_basic
 - [ ] test_bucket_list_prefix_unreadable
 - [ ] test_bucket_list_return_data
-- [ ] test_bucket_listv2_continuationtoken
 - [ ] test_bucket_listv2_continuationtoken_empty
 - [ ] test_bucket_listv2_encoding_basic
 - [ ] test_bucket_listv2_fetchowner_notempty
@@ -189,49 +197,49 @@ Legend: `[x]` passed · `[ ]` failed · `[!]` error
 - [ ] test_bucket_listv2_objects_anonymous_fail
 - [ ] test_object_content_encoding_aws_chunked
 
-## Multipart Upload (3/41 passed)
+## Multipart Upload (23/41 passed)
 
 - [x] test_abort_multipart_upload
 - [x] test_abort_multipart_upload_not_found
 - [x] test_atomic_multipart_upload_write
+- [x] test_list_multipart_upload
+- [x] test_multipart_copy_improper_range
+- [x] test_multipart_copy_invalid_range
+- [x] test_multipart_copy_multiple_sizes
+- [x] test_multipart_copy_small
+- [x] test_multipart_copy_special_names
+- [x] test_multipart_copy_without_range
+- [x] test_multipart_put_object_if_match
+- [x] test_multipart_resend_first_finishes_last
+- [x] test_multipart_upload_complete_without_create
+- [x] test_multipart_upload_contents
+- [x] test_multipart_upload_empty
+- [x] test_multipart_upload_incorrect_etag
+- [x] test_multipart_upload_missing_part
+- [x] test_multipart_upload_multiple_sizes
+- [x] test_multipart_upload_overwrite_existing_object
+- [x] test_multipart_upload_resend_part
+- [x] test_multipart_upload_size_too_small
+- [x] test_non_multipart_get_part
+- [x] test_upload_part_copy_percent_encoded_key
 - [ ] test_get_multipart_checksum_object_attributes
 - [ ] test_get_multipart_object_attributes
 - [ ] test_get_paginated_multipart_object_attributes
 - [ ] test_get_single_multipart_object_attributes
-- [ ] test_list_multipart_upload
 - [ ] test_list_multipart_upload_owner
 - [ ] test_multipart_checksum_sha256
-- [ ] test_multipart_copy_improper_range
-- [ ] test_multipart_copy_invalid_range
-- [ ] test_multipart_copy_multiple_sizes
-- [ ] test_multipart_copy_small
-- [ ] test_multipart_copy_special_names
-- [ ] test_multipart_copy_without_range
 - [ ] test_multipart_get_part
 - [ ] test_multipart_put_current_object_if_match
 - [ ] test_multipart_put_current_object_if_none_match
-- [ ] test_multipart_put_object_if_match
-- [ ] test_multipart_resend_first_finishes_last
 - [ ] test_multipart_reupload_checksum_and_etag
 - [ ] test_multipart_single_get_part
 - [ ] test_multipart_upload
-- [ ] test_multipart_upload_complete_without_create
-- [ ] test_multipart_upload_contents
-- [ ] test_multipart_upload_empty
-- [ ] test_multipart_upload_incorrect_etag
-- [ ] test_multipart_upload_missing_part
-- [ ] test_multipart_upload_multiple_sizes
-- [ ] test_multipart_upload_overwrite_existing_object
-- [ ] test_multipart_upload_resend_part
-- [ ] test_multipart_upload_size_too_small
 - [ ] test_multipart_upload_small
 - [ ] test_multipart_use_cksum_helper_crc32
 - [ ] test_multipart_use_cksum_helper_crc32c
 - [ ] test_multipart_use_cksum_helper_crc64nvme
 - [ ] test_multipart_use_cksum_helper_sha1
 - [ ] test_multipart_use_cksum_helper_sha256
-- [ ] test_non_multipart_get_part
-- [ ] test_upload_part_copy_percent_encoded_key
 
 ## Copy Object (2/4 passed)
 
@@ -276,11 +284,6 @@ Legend: `[x]` passed · `[ ]` failed · `[!]` error
 - [ ] test_object_create_bad_contentlength_none
 - [ ] test_object_create_bad_expect_mismatch
 - [ ] test_object_create_bad_md5_empty
-
-## Conditional Requests (0/2 passed)
-
-- [ ] test_put_current_object_if_match
-- [ ] test_put_current_object_if_none_match
 
 ## ACL / Public Access (4/41 passed)
 
@@ -371,9 +374,14 @@ Legend: `[x]` passed · `[ ]` failed · `[!]` error
 - [ ] test_versioning_obj_suspended_copy
 - [ ] test_versioning_stack_delete_merkers
 
-## Object Lock / WORM (1/37 passed)
+## Object Lock / WORM (6/37 passed)
 
 - [x] test_object_lock_changing_mode_from_governance_with_bypass
+- [x] test_object_lock_get_legal_hold
+- [x] test_object_lock_put_legal_hold
+- [x] test_object_lock_put_obj_lock_invalid_mode
+- [x] test_object_lock_put_obj_lock_invalid_status
+- [x] test_object_lock_put_obj_lock_with_days_and_years
 - [ ] test_object_lock_changing_mode_from_compliance
 - [ ] test_object_lock_changing_mode_from_governance_without_bypass
 - [ ] test_object_lock_delete_multipart_object_with_legal_hold_on
@@ -382,7 +390,6 @@ Legend: `[x]` passed · `[ ]` failed · `[!]` error
 - [ ] test_object_lock_delete_object_with_legal_hold_on
 - [ ] test_object_lock_delete_object_with_retention
 - [ ] test_object_lock_delete_object_with_retention_and_marker
-- [ ] test_object_lock_get_legal_hold
 - [ ] test_object_lock_get_legal_hold_invalid_bucket
 - [ ] test_object_lock_get_obj_lock
 - [ ] test_object_lock_get_obj_lock_invalid_bucket
@@ -391,17 +398,13 @@ Legend: `[x]` passed · `[ ]` failed · `[!]` error
 - [ ] test_object_lock_get_obj_retention_invalid_bucket
 - [ ] test_object_lock_get_obj_retention_iso8601
 - [ ] test_object_lock_multi_delete_object_with_retention
-- [ ] test_object_lock_put_legal_hold
 - [ ] test_object_lock_put_legal_hold_invalid_bucket
 - [ ] test_object_lock_put_legal_hold_invalid_status
 - [ ] test_object_lock_put_obj_lock
 - [ ] test_object_lock_put_obj_lock_enable_after_create
 - [ ] test_object_lock_put_obj_lock_invalid_bucket
 - [ ] test_object_lock_put_obj_lock_invalid_days
-- [ ] test_object_lock_put_obj_lock_invalid_mode
-- [ ] test_object_lock_put_obj_lock_invalid_status
 - [ ] test_object_lock_put_obj_lock_invalid_years
-- [ ] test_object_lock_put_obj_lock_with_days_and_years
 - [ ] test_object_lock_put_obj_retention
 - [ ] test_object_lock_put_obj_retention_increase_period
 - [ ] test_object_lock_put_obj_retention_invalid_bucket
@@ -411,17 +414,13 @@ Legend: `[x]` passed · `[ ]` failed · `[!]` error
 - [ ] test_object_lock_put_obj_retention_shorten_period_bypass
 - [ ] test_object_lock_uploading_obj
 
-## IAM / STS / OIDC (0/2 passed)
-
-- [!] test_verify_add_existing_client_id_to_oidc
-- [!] test_verify_update_thumbprintlist_of_oidc
-
 ## Utils / Misc (1/1 passed)
 
 - [x] test_generate
 
-## Other / Uncategorized (28/105 passed)
+## Other / Uncategorized (36/105 passed)
 
+- [x] test_100_continue_error_retry
 - [x] test_atomic_dual_write_1mb
 - [x] test_atomic_dual_write_4mb
 - [x] test_atomic_dual_write_8mb
@@ -441,7 +440,10 @@ Legend: `[x]` passed · `[ ]` failed · `[!]` error
 - [x] test_object_copy_diff_bucket
 - [x] test_object_copy_key_not_found
 - [x] test_object_copy_not_owned_bucket
+- [x] test_object_copy_replacing_metadata
+- [x] test_object_copy_retaining_metadata
 - [x] test_object_copy_same_bucket
+- [x] test_object_copy_to_itself_with_metadata
 - [x] test_object_copy_verify_contenttype
 - [x] test_object_copy_zero_size
 - [x] test_object_head_zero_bytes
@@ -450,8 +452,11 @@ Legend: `[x]` passed · `[ ]` failed · `[!]` error
 - [x] test_object_raw_authenticated
 - [x] test_object_raw_authenticated_bucket_gone
 - [x] test_object_raw_authenticated_object_gone
+- [x] test_object_requestid_matches_header_on_error
+- [x] test_object_set_get_metadata_none_to_empty
+- [x] test_object_set_get_metadata_none_to_good
+- [x] test_object_set_get_metadata_overwrite_to_empty
 - [ ] test_100_continue
-- [ ] test_100_continue_error_retry
 - [ ] test_access_bucket_private_object_private
 - [ ] test_access_bucket_private_object_publicread
 - [ ] test_access_bucket_private_object_publicreadwrite
@@ -475,10 +480,7 @@ Legend: `[x]` passed · `[ ]` failed · `[!]` error
 - [ ] test_object_anon_put
 - [ ] test_object_anon_put_write_access
 - [ ] test_object_copy_not_owned_object_bucket
-- [ ] test_object_copy_replacing_metadata
-- [ ] test_object_copy_retaining_metadata
 - [ ] test_object_copy_to_itself
-- [ ] test_object_copy_to_itself_with_metadata
 - [ ] test_object_raw_get
 - [ ] test_object_raw_get_bucket_gone
 - [ ] test_object_raw_get_x_amz_expires_not_expired
@@ -488,10 +490,6 @@ Legend: `[x]` passed · `[ ]` failed · `[!]` error
 - [ ] test_object_raw_get_x_amz_expires_out_range_zero
 - [ ] test_object_raw_put_authenticated_expired
 - [ ] test_object_raw_response_headers
-- [ ] test_object_requestid_matches_header_on_error
-- [ ] test_object_set_get_metadata_none_to_empty
-- [ ] test_object_set_get_metadata_none_to_good
-- [ ] test_object_set_get_metadata_overwrite_to_empty
 - [ ] test_object_set_get_unicode_metadata
 - [ ] test_post_object_anonymous_request
 - [ ] test_post_object_authenticated_no_content_type
