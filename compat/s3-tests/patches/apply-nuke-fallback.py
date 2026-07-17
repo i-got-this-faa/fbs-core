@@ -80,11 +80,26 @@ def nuke_bucket(client, bucket):
                     pass
 
     try:
+        # Abort any lingering multipart uploads before deleting the bucket.
+        try:
+            uploads = client.list_multipart_uploads(Bucket=bucket).get('Uploads', [])
+            for u in uploads:
+                try:
+                    client.abort_multipart_upload(
+                        Bucket=bucket,
+                        Key=u['Key'],
+                        UploadId=u['UploadId'],
+                    )
+                except ClientError:
+                    pass
+        except ClientError:
+            pass
+
         client.delete_bucket(Bucket=bucket)
-    except ClientError:
-        # Leftover multiparts or other state: leave the bucket and continue.
+    except ClientError as e:
+        # Leftover multiparts or other state: log and continue.
         # Tests use unique prefixes; a stuck bucket must not halt the suite.
-        pass
+        print(f"  warning: could not delete bucket {bucket}: {e}")
 
 
 def nuke_prefixed_buckets(prefix, client=None):

@@ -3,6 +3,7 @@ package s3
 import (
 	"encoding/xml"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -172,6 +173,9 @@ func (h *ObjectHandlers) PutObject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("ETag", quoteETag(obj.ETag))
+	for name, value := range cs {
+		w.Header().Set(name, value)
+	}
 	w.WriteHeader(http.StatusOK)
 }
 func (h *ObjectHandlers) GetObject(w http.ResponseWriter, r *http.Request) {
@@ -244,19 +248,24 @@ func (h *ObjectHandlers) GetObjectAttributes(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
-	// AWS requires this header; default to all if not provided.
+	// AWS requires this header; reject if missing.
 	attrHeader := r.Header.Get("x-amz-object-attributes")
+	if attrHeader == "" {
+		WriteS3Error(w, r, http.StatusBadRequest, codeInvalidRequest, "x-amz-object-attributes header is required")
+		return
+	}
 	requested := make(map[string]bool)
-	if attrHeader != "" {
-		for _, attr := range strings.Split(attrHeader, ",") {
-			requested[strings.TrimSpace(strings.ToLower(attr))] = true
+	validAttrs := map[string]bool{"etag": true, "checksum": true, "objectparts": true, "storageclass": true, "objectsize": true}
+	for _, attr := range strings.Split(attrHeader, ",") {
+		a := strings.TrimSpace(strings.ToLower(attr))
+		if a == "" {
+			continue
 		}
-	} else {
-		// If no header, return all attributes (broad compatibility).
-		requested["etag"] = true
-		requested["checksum"] = true
-		requested["objectparts"] = true
-		requested["storageclass"] = true
+		if !validAttrs[a] {
+			WriteS3Error(w, r, http.StatusBadRequest, codeInvalidRequest, fmt.Sprintf("invalid attribute: %s", a))
+			return
+		}
+		requested[a] = true
 	}
 
 	var objectParts *ObjectPartsInfo
@@ -276,12 +285,13 @@ func (h *ObjectHandlers) GetObjectAttributes(w http.ResponseWriter, r *http.Requ
 	}
 
 	result := GetObjectAttributesResult{
-		Xmlns:        "http://s3.amazonaws.com/doc/2006-03-01/",
-		LastModified: obj.UpdatedAt.Format(time.RFC3339),
-		ObjectSize:   obj.Size,
+		Xmlns: "http://s3.amazonaws.com/doc/2006-03-01/",
 	}
 	if requested["etag"] {
 		result.ETag = quoteETag(obj.ETag)
+	}
+	if requested["objectsize"] {
+		result.ObjectSize = &obj.Size
 	}
 	if requested["storageclass"] {
 		result.StorageClass = "STANDARD"

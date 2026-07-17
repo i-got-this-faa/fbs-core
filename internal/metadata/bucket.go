@@ -23,7 +23,7 @@ type BucketRepository interface {
 	List(ctx context.Context) ([]Bucket, error)
 	ListByOwner(ctx context.Context, ownerID string) ([]Bucket, error)
 	ListByNames(ctx context.Context, names []string) ([]Bucket, error)
-	UpdateOwner(ctx context.Context, name, ownerID string) error
+	UpdateOwner(ctx context.Context, name, ownerID string, expectedOwnerID string) error
 	Delete(ctx context.Context, name string) error
 }
 
@@ -162,10 +162,10 @@ func (r *sqliteBucketRepository) ListByNames(ctx context.Context, names []string
 	return buckets, nil
 }
 
-func (r *sqliteBucketRepository) UpdateOwner(ctx context.Context, name, ownerID string) error {
-	const q = `UPDATE buckets SET owner_id = ? WHERE name = ?`
+func (r *sqliteBucketRepository) UpdateOwner(ctx context.Context, name, ownerID string, expectedOwnerID string) error {
+	const q = `UPDATE buckets SET owner_id = ? WHERE name = ? AND owner_id = ?`
 
-	result, err := r.db.ExecContext(ctx, q, ownerID, name)
+	result, err := r.db.ExecContext(ctx, q, ownerID, name, expectedOwnerID)
 	if err != nil {
 		return fmt.Errorf("update bucket owner: %w", err)
 	}

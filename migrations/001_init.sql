@@ -29,11 +29,13 @@ CREATE TABLE IF NOT EXISTS objects (
     created_at     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     is_multipart   INTEGER NOT NULL DEFAULT 0,
+    parts_count    INTEGER NOT NULL DEFAULT 0,
     checksum_crc32    TEXT,
     checksum_crc32c   TEXT,
     checksum_crc64nvme TEXT,
     checksum_sha1     TEXT,
     checksum_sha256   TEXT,
+    user_metadata     TEXT,
     UNIQUE(bucket_name, key)
 );
 

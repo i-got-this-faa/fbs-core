@@ -46,6 +46,8 @@ func (h *ObjectHandlers) DeleteBucket(w http.ResponseWriter, r *http.Request) {
 		for _, upload := range uploads {
 			if delErr := h.MultipartUploads.Delete(r.Context(), upload.ID); delErr != nil {
 				h.logError("delete multipart upload during bucket deletion", delErr, bucketName, upload.Key, upload.ID)
+				WriteS3Error(w, r, http.StatusInternalServerError, codeInternalError, messageInternalError)
+				return
 			}
 			ctx, cancel := withCleanupTimeout()
 			if storErr := h.Storage.DeleteUploadParts(ctx, upload.ID); storErr != nil {

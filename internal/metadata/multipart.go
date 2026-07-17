@@ -524,14 +524,14 @@ func (r *sqliteMultipartUploadRepository) ListByBucket(ctx context.Context, buck
 		WHERE bucket_name = ?
 		  AND status = 'active'
 		  AND (? = '' OR substr(key, 1, length(?)) = ?)
-		  AND (key, id) > (?, ?)
+		  AND (? = '' OR key > ? OR (key = ? AND ? != '' AND id > ?))
 		ORDER BY key, id
 		LIMIT ?`
 
 	// We query maxUploads+1 to detect truncation.
 	limit := maxUploads + 1
 
-	rows, err := r.db.QueryContext(ctx, q, bucketName, prefix, prefix, prefix, keyMarker, uploadIDMarker, limit)
+	rows, err := r.db.QueryContext(ctx, q, bucketName, prefix, prefix, prefix, keyMarker, keyMarker, keyMarker, uploadIDMarker, uploadIDMarker, limit)
 	if err != nil {
 		return nil, false, "", "", fmt.Errorf("list multipart uploads by bucket: %w", err)
 	}

@@ -155,16 +155,20 @@ type ListPartsPart struct {
 	LastModified      string `xml:"LastModified"`
 	ETag              string `xml:"ETag"`
 	Size              int64  `xml:"Size"`
-	ChecksumAlgorithm string `xml:"ChecksumAlgorithm,omitempty"`
+	ChecksumCRC32    string `xml:"ChecksumCRC32,omitempty"`
+	ChecksumCRC32C   string `xml:"ChecksumCRC32C,omitempty"`
+	ChecksumCRC64NVME string `xml:"ChecksumCRC64NVME,omitempty"`
+	ChecksumSHA1     string `xml:"ChecksumSHA1,omitempty"`
+	ChecksumSHA256   string `xml:"ChecksumSHA256,omitempty"`
 }
 
 type GetObjectAttributesResult struct {
-	XMLName      xml.Name          `xml:"GetObjectAttributesResult"`
+	XMLName      xml.Name          `xml:"GetObjectAttributesResponse"`
 	Xmlns        string            `xml:"xmlns,attr"`
-	ETag         string            `xml:"ETag"`
-	LastModified string            `xml:"LastModified"`
-	ObjectSize   int64             `xml:"ObjectSize"`
-	StorageClass string            `xml:"StorageClass"`
+	ETag         string            `xml:"ETag,omitempty"`
+	LastModified string            `xml:"LastModified,omitempty"`
+	ObjectSize   *int64            `xml:"ObjectSize,omitempty"`
+	StorageClass string            `xml:"StorageClass,omitempty"`
 	ObjectParts  *ObjectPartsInfo  `xml:"ObjectParts,omitempty"`
 	Checksum     *ObjectChecksum   `xml:"Checksum,omitempty"`
 }

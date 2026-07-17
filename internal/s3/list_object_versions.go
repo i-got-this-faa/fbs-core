@@ -31,6 +31,11 @@ func (h *ObjectHandlers) ListObjectVersions(w http.ResponseWriter, r *http.Reque
 	}
 
 	keyMarker := r.URL.Query().Get("key-marker")
+	delimiter := r.URL.Query().Get("delimiter")
+	if delimiter != "" {
+		WriteS3Error(w, r, http.StatusNotImplemented, codeNotImplemented, "delimiter is not yet supported")
+		return
+	}
 
 	objects, isTruncated, err := h.Objects.List(r.Context(), bucketName, prefix, keyMarker, maxKeys)
 	if err != nil {

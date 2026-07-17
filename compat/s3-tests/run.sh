@@ -177,6 +177,8 @@ write_conf() {
   local tenant_sk="${12}"
   local tenant_uid="${13}"
   local tenant_name="${14}"
+  local is_secure="${15:-False}"
+  local ssl_verify="${16:-False}"
 
   # ConfigParser-safe: values with special characters are fine as long as they
   # are not multi-line. SigV4 secrets from fbs-core are single-line.
@@ -184,8 +186,8 @@ write_conf() {
 [DEFAULT]
 host = ${host}
 port = ${port}
-is_secure = False
-ssl_verify = False
+is_secure = ${is_secure}
+ssl_verify = ${ssl_verify}
 
 [fixtures]
 bucket prefix = fbs-{random}-
@@ -320,27 +322,35 @@ use_external_server() {
   [[ -n "${main_ak}" && -n "${main_sk}" ]] || die "external mode needs FBS_S3_TESTS_MAIN_ACCESS_KEY/SECRET_KEY"
   [[ -n "${alt_ak}" && -n "${alt_sk}" ]] || die "external mode needs FBS_S3_TESTS_ALT_ACCESS_KEY/SECRET_KEY"
 
-  # Parse host/port from endpoint (http://host:port)
+  # Parse host/port/scheme from endpoint (http://host:port or https://host:port)
   local parsed
-  parsed="$(python3 - <<PY
+  parsed="$(python3 - "$endpoint" <<'PY'
 from urllib.parse import urlparse
-u = urlparse("${endpoint}")
+import sys
+u = urlparse(sys.argv[1])
 if not u.hostname:
-    raise SystemExit("endpoint must include host, got: ${endpoint}")
+    raise SystemExit("endpoint must include host, got: " + sys.argv[1])
 port = u.port
 if port is None:
     port = 443 if u.scheme == "https" else 80
 print(u.hostname)
 print(port)
+print("True" if u.scheme == "https" else "False")
 PY
 )"
   host="$(printf '%s\n' "${parsed}" | sed -n '1p')"
   port="$(printf '%s\n' "${parsed}" | sed -n '2p')"
+  is_secure="$(printf '%s\n' "${parsed}" | sed -n '3p')"
+  local ssl_verify="True"
+  if [[ "${is_secure}" == "False" ]]; then
+    ssl_verify="False"
+  fi
 
   write_conf "${host}" "${port}" \
     "${main_ak}" "${main_sk}" "external-main" "external main" \
     "${alt_ak}" "${alt_sk}" "external-alt" "external alt" \
-    "${tenant_ak}" "${tenant_sk}" "external-tenant" "external tenant"
+    "${tenant_ak}" "${tenant_sk}" "external-tenant" "external tenant" \
+    "${is_secure}" "${ssl_verify}"
 
   ENDPOINT_DISPLAY="${endpoint}"
 }

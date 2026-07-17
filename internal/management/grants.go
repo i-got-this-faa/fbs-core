@@ -115,6 +115,15 @@ func (h *Handlers) CreateBucketGrants(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 	created := make([]grantResponse, 0, len(input.actions))
 
+	// Validate all actions upfront so we don't partially create grants.
+	for _, action := range input.actions {
+		if !authz.IsGrantable(action) {
+			writeError(w, http.StatusBadRequest, errorCodeInvalidRequest, "invalid or non-grantable action")
+			return
+		}
+	}
+
+	var createdGrants []metadata.Grant
 	for _, action := range input.actions {
 		grant := &metadata.Grant{
 			ID:            uuid.NewString(),
@@ -130,6 +139,10 @@ func (h *Handlers) CreateBucketGrants(w http.ResponseWriter, r *http.Request) {
 		}
 		result, existed, err := h.Grants.CreateIdempotent(r.Context(), grant)
 		if err != nil {
+			// Roll back any grants created so far in this batch.
+			for i := range createdGrants {
+				_ = h.Grants.Delete(r.Context(), createdGrants[i].ID)
+			}
 			if errors.Is(err, metadata.ErrInvalidGrantAction) {
 				writeError(w, http.StatusBadRequest, errorCodeInvalidRequest, "invalid or non-grantable action")
 				return
@@ -137,6 +150,7 @@ func (h *Handlers) CreateBucketGrants(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to create grant")
 			return
 		}
+		createdGrants = append(createdGrants, *result)
 		created = append(created, grantDTO(*result))
 		if !existed {
 			h.recordActivity(r, "create_grant", bucket.Name, action, 0, result.ID)
@@ -313,7 +327,7 @@ func (h *Handlers) TransferBucketOwnership(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if err := h.Buckets.UpdateOwner(r.Context(), bucket.Name, newOwner.ID); err != nil {
+	if err := h.Buckets.UpdateOwner(r.Context(), bucket.Name, newOwner.ID, bucket.OwnerID); err != nil {
 		if errors.Is(err, metadata.ErrBucketNotFound) {
 			writeError(w, http.StatusNotFound, errorCodeNotFound, "bucket not found")
 			return

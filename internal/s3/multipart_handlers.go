@@ -108,6 +108,10 @@ func (h *ObjectHandlers) ListMultipartUploads(w http.ResponseWriter, r *http.Req
 	keyMarker := q.Get("key-marker")
 	uploadIDMarker := q.Get("upload-id-marker")
 	delimiter := q.Get("delimiter")
+	if delimiter != "" {
+		WriteS3Error(w, r, http.StatusNotImplemented, codeNotImplemented, "delimiter is not yet supported")
+		return
+	}
 
 	uploads, isTruncated, nextKeyMarker, nextUploadIDMarker, err := h.MultipartUploads.ListByBucket(
 		r.Context(), bucketName, prefix, keyMarker, uploadIDMarker, maxUploads,
@@ -188,7 +192,12 @@ func (h *ObjectHandlers) UploadPart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check conditional headers (If-Match / If-None-Match) against the existing object.
-	existingObj, _ := h.Objects.GetByKey(r.Context(), bucketName, key)
+	existingObj, objErr := h.Objects.GetByKey(r.Context(), bucketName, key)
+	if objErr != nil && !errors.Is(objErr, metadata.ErrObjectNotFound) {
+		h.logError("get existing object for precondition check", objErr, bucketName, key, "")
+		WriteS3Error(w, r, http.StatusInternalServerError, codeInternalError, messageInternalError)
+		return
+	}
 	if h.checkPreconditionFailed(w, r, existingObj) {
 		return
 	}
@@ -382,10 +391,15 @@ func (h *ObjectHandlers) ListParts(w http.ResponseWriter, r *http.Request) {
 	partEntries := make([]ListPartsPart, 0, len(parts))
 	for _, p := range parts {
 		partEntries = append(partEntries, ListPartsPart{
-			PartNumber:   p.PartNumber,
-			LastModified: p.CreatedAt.Format(time.RFC3339),
-			ETag:         quoteETag(p.ETag),
-			Size:         p.Size,
+			PartNumber:        p.PartNumber,
+			LastModified:      p.CreatedAt.Format(time.RFC3339),
+			ETag:              quoteETag(p.ETag),
+			Size:              p.Size,
+			ChecksumCRC32:     p.ChecksumCRC32,
+			ChecksumCRC32C:    p.ChecksumCRC32C,
+			ChecksumCRC64NVME: p.ChecksumCRC64NVME,
+			ChecksumSHA1:      p.ChecksumSHA1,
+			ChecksumSHA256:    p.ChecksumSHA256,
 		})
 	}
 
@@ -430,20 +444,6 @@ func (h *ObjectHandlers) CompleteMultipartUpload(w http.ResponseWriter, r *http.
 	}
 	upload, err := h.MultipartUploads.GetByID(r.Context(), uploadID)
 	if errors.Is(err, metadata.ErrMultipartUploadNotFound) {
-		// S3 idempotency: if the upload is gone but the object exists,
-		// the upload was already completed — return success as S3 does.
-		if existing, getErr := h.Objects.GetByKey(r.Context(), bucketName, key); getErr == nil && existing != nil {
-			w.Header().Set("Content-Type", "application/xml")
-			w.WriteHeader(http.StatusOK)
-			_ = xml.NewEncoder(w).Encode(CompleteMultipartUploadResult{
-				Location: fmt.Sprintf("/%s/%s", bucketName, key),
-				Bucket:   bucketName,
-				Key:      key,
-				ETag:     quoteETag(existing.ETag),
-				Xmlns:    "http://s3.amazonaws.com/doc/2006-03-01/",
-			})
-			return
-		}
 		WriteS3Error(w, r, http.StatusNotFound, codeNoSuchUpload, messageNoSuchUpload)
 		return
 	} else if err != nil {
@@ -457,7 +457,12 @@ func (h *ObjectHandlers) CompleteMultipartUpload(w http.ResponseWriter, r *http.
 	}
 
 	// Check conditional headers (If-Match / If-None-Match) against the existing object.
-	existingObj, _ := h.Objects.GetByKey(r.Context(), bucketName, key)
+	existingObj, objErr := h.Objects.GetByKey(r.Context(), bucketName, key)
+	if objErr != nil && !errors.Is(objErr, metadata.ErrObjectNotFound) {
+		h.logError("get existing object for precondition check", objErr, bucketName, key, "")
+		WriteS3Error(w, r, http.StatusInternalServerError, codeInternalError, messageInternalError)
+		return
+	}
 	if h.checkPreconditionFailed(w, r, existingObj) {
 		return
 	}
@@ -473,20 +478,6 @@ func (h *ObjectHandlers) CompleteMultipartUpload(w http.ResponseWriter, r *http.
 	// Re-read upload after locking to detect races with abort/complete.
 	upload, err = h.MultipartUploads.GetByID(r.Context(), uploadID)
 	if errors.Is(err, metadata.ErrMultipartUploadNotFound) {
-		// Same idempotency check after lock acquisition — the upload may have
-		// been completed by another process while we were waiting for the lock.
-		if existing, getErr := h.Objects.GetByKey(r.Context(), bucketName, key); getErr == nil && existing != nil {
-			w.Header().Set("Content-Type", "application/xml")
-			w.WriteHeader(http.StatusOK)
-			_ = xml.NewEncoder(w).Encode(CompleteMultipartUploadResult{
-				Location: fmt.Sprintf("/%s/%s", bucketName, key),
-				Bucket:   bucketName,
-				Key:      key,
-				ETag:     quoteETag(existing.ETag),
-				Xmlns:    "http://s3.amazonaws.com/doc/2006-03-01/",
-			})
-			return
-		}
 		WriteS3Error(w, r, http.StatusNotFound, codeNoSuchUpload, messageNoSuchUpload)
 		return
 	} else if err != nil {
@@ -813,6 +804,9 @@ func (h *ObjectHandlers) UploadPartCopy(w http.ResponseWriter, r *http.Request) 
 		WriteS3Error(w, r, http.StatusBadRequest, codeInvalidRequest, messageInvalidRequest)
 		return
 	}
+	if !requireSignedHeader(w, r, "x-amz-copy-source") {
+		return
+	}
 
 	source, err := parseCopySource(copySource)
 	if err != nil {
@@ -822,6 +816,11 @@ func (h *ObjectHandlers) UploadPartCopy(w http.ResponseWriter, r *http.Request) 
 	if source.versionID != "" {
 		WriteS3Error(w, r, http.StatusNotImplemented, codeNotImplemented, messageNotImplemented)
 		return
+	}
+	if copySourceRange := r.Header.Get("x-amz-copy-source-range"); copySourceRange != "" {
+		if !requireSignedHeader(w, r, "x-amz-copy-source-range") {
+			return
+		}
 	}
 
 	// Validate the multipart upload exists and matches the target key.
