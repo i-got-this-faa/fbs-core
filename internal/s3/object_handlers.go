@@ -231,10 +231,12 @@ func (h *ObjectHandlers) handlePartNumber(w http.ResponseWriter, r *http.Request
 		return true
 	}
 
-	// For multipart objects, serve the full object with part metadata headers.
-	// Full per-part range serving requires storing per-part sizes in object metadata.
+	// Per-part range serving is not yet implemented; returning the full object
+	// with a wrong Content-Length would silently corrupt parallel downloads.
+	// Return 501 until per-part storage metadata is available.
 	w.Header().Set("x-amz-mp-parts-count", strconv.Itoa(obj.PartsCount))
-	return false
+	WriteS3Error(w, r, http.StatusNotImplemented, codeNotImplemented, messageNotImplemented)
+	return true
 }
 func (h *ObjectHandlers) GetObjectAttributes(w http.ResponseWriter, r *http.Request) {
 	bucketName, key := objectRouteParams(r)
@@ -274,6 +276,7 @@ func (h *ObjectHandlers) GetObjectAttributes(w http.ResponseWriter, r *http.Requ
 	}
 
 	result := GetObjectAttributesResult{
+		Xmlns:        "http://s3.amazonaws.com/doc/2006-03-01/",
 		LastModified: obj.UpdatedAt.Format(time.RFC3339),
 		ObjectSize:   obj.Size,
 	}

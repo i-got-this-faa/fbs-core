@@ -9,7 +9,6 @@ import (
 	"time"
 )
 // MultipartUpload represents a row in the multipart_uploads table.
-// MultipartUpload represents a row in the multipart_uploads table.
 type MultipartUpload struct {
 	ID                string
 	BucketName        string
@@ -523,15 +522,16 @@ func (r *sqliteMultipartUploadRepository) ListByBucket(ctx context.Context, buck
 		SELECT id, bucket_name, key, content_type, status, created_at, status_updated_at, checksum_algorithm, user_metadata
 		FROM multipart_uploads
 		WHERE bucket_name = ?
+		  AND status = 'active'
 		  AND (? = '' OR substr(key, 1, length(?)) = ?)
-		  AND (key > ? OR (key = ? AND id > ?))
+		  AND (key, id) > (?, ?)
 		ORDER BY key, id
 		LIMIT ?`
 
 	// We query maxUploads+1 to detect truncation.
 	limit := maxUploads + 1
 
-	rows, err := r.db.QueryContext(ctx, q, bucketName, prefix, prefix, prefix, keyMarker, keyMarker, uploadIDMarker, limit)
+	rows, err := r.db.QueryContext(ctx, q, bucketName, prefix, prefix, prefix, keyMarker, uploadIDMarker, limit)
 	if err != nil {
 		return nil, false, "", "", fmt.Errorf("list multipart uploads by bucket: %w", err)
 	}

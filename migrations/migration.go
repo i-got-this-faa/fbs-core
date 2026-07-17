@@ -275,6 +275,8 @@ CREATE INDEX IF NOT EXISTS idx_grants_bucket
 }
 
 // addColumnIfMissing adds a column to a table if it doesn't already exist.
+// Only trusted literal strings may be passed — all arguments are interpolated
+// directly into SQL with no parameterization.
 func addColumnIfMissing(tx *sql.Tx, table, name, typ, def string) error {
 	var count int
 	err := tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('`+table+`') WHERE name = ?`, name).Scan(&count)

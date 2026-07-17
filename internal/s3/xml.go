@@ -160,6 +160,7 @@ type ListPartsPart struct {
 
 type GetObjectAttributesResult struct {
 	XMLName      xml.Name          `xml:"GetObjectAttributesResult"`
+	Xmlns        string            `xml:"xmlns,attr"`
 	ETag         string            `xml:"ETag"`
 	LastModified string            `xml:"LastModified"`
 	ObjectSize   int64             `xml:"ObjectSize"`
