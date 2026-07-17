@@ -3,7 +3,10 @@
 #
 # Usage:
 #   ./compat/s3-tests/report.sh
-#   ./compat/s3-tests/report.sh /tmp/s3-tests-run2.log
+#   ./compat/s3-tests/report.sh /path/to/run.log
+#
+# If no log path is given, uses FBS_S3_TESTS_LOG if set,
+# otherwise falls back to .workdir/run.log.
 #
 # Writes:
 #   compat/s3-tests/results/checklist.md
@@ -29,13 +32,15 @@ S3_TESTS_DIR="${WORKDIR}/s3-tests"
 VENV_DIR="${WORKDIR}/venv"
 
 if [[ -z "${LOG}" ]]; then
-  if [[ -f /tmp/s3-tests-run2.log ]]; then
-    LOG=/tmp/s3-tests-run2.log
-  elif [[ -f /tmp/s3-tests-run.log ]]; then
-    LOG=/tmp/s3-tests-run.log
+  FALLBACK_LOG="${FBS_S3_TESTS_LOG:-}"
+  if [[ -z "${FALLBACK_LOG}" && -f "${WORKDIR}/run.log" ]]; then
+    FALLBACK_LOG="${WORKDIR}/run.log"
+  fi
+  if [[ -n "${FALLBACK_LOG}" ]]; then
+    LOG="${FALLBACK_LOG}"
   else
     echo "usage: $0 [pytest-or-run.log]" >&2
-    echo "No default log found. Run ./compat/s3-tests/run.sh first." >&2
+    echo "No default log found. Set FBS_S3_TESTS_LOG or run ./compat/s3-tests/run.sh first." >&2
     exit 1
   fi
 fi
