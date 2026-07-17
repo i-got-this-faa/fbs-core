@@ -357,7 +357,7 @@ func TestMultipartUploadCompleteUpload(t *testing.T) {
 		t.Fatalf("ClaimUpload: %v", err)
 	}
 
-	oldPath, err := repo.CompleteUpload(ctx, obj, upload.ID)
+	oldPath, err := repo.CompleteUpload(ctx, obj, upload.ID, "", "")
 	if err != nil {
 		t.Fatalf("CompleteUpload: %v", err)
 	}
@@ -416,7 +416,7 @@ func TestMultipartUploadCompleteUpload_OverwriteExistingObject(t *testing.T) {
 		t.Fatalf("ClaimUpload: %v", err)
 	}
 
-	oldPath, err := repo.CompleteUpload(ctx, obj, upload.ID)
+	oldPath, err := repo.CompleteUpload(ctx, obj, upload.ID, "", "")
 	if err != nil {
 		t.Fatalf("CompleteUpload: %v", err)
 	}
@@ -451,7 +451,7 @@ func TestMultipartUploadCompleteUpload_NotFound(t *testing.T) {
 		UpdatedAt:   time.Now().UTC(),
 	}
 
-	_, err := repo.CompleteUpload(ctx, obj, "nonexistent-upload")
+	_, err := repo.CompleteUpload(ctx, obj, "nonexistent-upload", "", "")
 	if !errors.Is(err, ErrMultipartUploadNotFound) {
 		t.Fatalf("expected ErrMultipartUploadNotFound, got %v", err)
 	}
@@ -487,7 +487,7 @@ func TestMultipartUploadCompleteUpload_RejectNonCompleting(t *testing.T) {
 	}
 
 	// CompleteUpload should reject an active upload (not claimed as completing).
-	_, err := repo.CompleteUpload(ctx, obj, upload.ID)
+	_, err := repo.CompleteUpload(ctx, obj, upload.ID, "", "")
 	if !errors.Is(err, ErrUploadAlreadyClaimed) {
 		t.Fatalf("expected ErrUploadAlreadyClaimed, got %v", err)
 	}
@@ -496,7 +496,7 @@ func TestMultipartUploadCompleteUpload_RejectNonCompleting(t *testing.T) {
 	if err := repo.ClaimUpload(ctx, upload.ID, "completing"); err != nil {
 		t.Fatalf("ClaimUpload: %v", err)
 	}
-	oldPath, err := repo.CompleteUpload(ctx, obj, upload.ID)
+	oldPath, err := repo.CompleteUpload(ctx, obj, upload.ID, "", "")
 	if err != nil {
 		t.Fatalf("CompleteUpload after claim: %v", err)
 	}

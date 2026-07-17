@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 // MultipartUpload represents a row in the multipart_uploads table.
@@ -54,7 +55,9 @@ type MultipartUploadRepository interface {
 	// object, deletes the upload, and returns the previous object storage_path
 	// (empty string if the object did not exist before).
 	// Returns ErrMultipartUploadNotFound if the upload does not exist.
-	CompleteUpload(ctx context.Context, obj *Object, uploadID string) (oldStoragePath string, err error)
+	// Returns ErrPreconditionFailed if ifMatch/ifNoneMatch preconditions fail.
+	// Returns ErrObjectNotFound if ifMatch is set but the object doesn't exist.
+	CompleteUpload(ctx context.Context, obj *Object, uploadID string, ifMatch, ifNoneMatch string) (oldStoragePath string, err error)
 	// ClaimUpload atomically checks the upload is active and sets its status.
 	// Returns ErrMultipartUploadNotFound if the upload does not exist,
 	// or ErrUploadAlreadyClaimed if it is no longer active.
@@ -72,6 +75,9 @@ var ErrMultipartUploadNotFound = errors.New("multipart upload not found")
 
 // ErrUploadAlreadyClaimed is returned when an upload is no longer active.
 var ErrUploadAlreadyClaimed = errors.New("multipart upload already claimed")
+
+// ErrPreconditionFailed is returned when a precondition check fails.
+var ErrPreconditionFailed = errors.New("precondition failed")
 
 // Multipart upload status values.
 const (
@@ -377,7 +383,7 @@ func (r *sqliteMultipartUploadRepository) AddPart(ctx context.Context, part *Mul
 	return oldStoragePath, nil
 }
 
-func (r *sqliteMultipartUploadRepository) CompleteUpload(ctx context.Context, obj *Object, uploadID string) (string, error) {
+func (r *sqliteMultipartUploadRepository) CompleteUpload(ctx context.Context, obj *Object, uploadID string, ifMatch, ifNoneMatch string) (string, error) {
 	conn, err := r.db.Conn(ctx)
 	if err != nil {
 		return "", fmt.Errorf("acquire db connection for complete upload: %w", err)
@@ -410,11 +416,35 @@ func (r *sqliteMultipartUploadRepository) CompleteUpload(ctx context.Context, ob
 	}
 
 	var oldStoragePath string
-	if err := conn.QueryRowContext(ctx,
-		`SELECT storage_path FROM objects WHERE bucket_name = ? AND key = ?`,
+	var oldETag sql.NullString
+	err = conn.QueryRowContext(ctx,
+		`SELECT storage_path, etag FROM objects WHERE bucket_name = ? AND key = ?`,
 		obj.BucketName, obj.Key,
-	).Scan(&oldStoragePath); err != nil && !errors.Is(err, sql.ErrNoRows) {
+	).Scan(&oldStoragePath, &oldETag)
+
+	objectExists := err == nil
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return "", fmt.Errorf("select existing object: %w", err)
+	}
+
+	// Check preconditions inside the transaction.
+	if ifMatch != "" || ifNoneMatch != "" {
+		if !objectExists && ifMatch != "" {
+			// S3 returns NoSuchKey when If-Match is set and object doesn't exist.
+			return "", ErrObjectNotFound
+		}
+		if objectExists {
+			etag := oldETag.String
+			if ifMatch != "" && ifMatch != "*" && !etagsEqual(ifMatch, etag) {
+				return "", ErrPreconditionFailed
+			}
+			if ifNoneMatch == "*" {
+				return "", ErrPreconditionFailed
+			}
+			if ifNoneMatch != "" && ifNoneMatch != "*" && etagsEqual(ifNoneMatch, etag) {
+				return "", ErrPreconditionFailed
+			}
+		}
 	}
 
 	const createQ = `
@@ -662,4 +692,17 @@ func nullify(s string) interface{} {
 		return nil
 	}
 	return s
+}
+
+// unquoteETag removes surrounding double quotes from an ETag if present.
+func unquoteETag(etag string) string {
+	if len(etag) >= 2 && etag[0] == '"' && etag[len(etag)-1] == '"' {
+		return etag[1 : len(etag)-1]
+	}
+	return etag
+}
+
+// etagsEqual performs case-insensitive comparison of two ETags after unquoting.
+func etagsEqual(a, b string) bool {
+	return strings.EqualFold(unquoteETag(a), unquoteETag(b))
 }

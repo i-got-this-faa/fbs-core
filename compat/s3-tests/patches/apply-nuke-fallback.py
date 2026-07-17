@@ -99,7 +99,7 @@ def nuke_bucket(client, bucket):
     except ClientError as e:
         # Leftover multiparts or other state: log and continue.
         # Tests use unique prefixes; a stuck bucket must not halt the suite.
-        print(f"  warning: could not delete bucket {bucket}: {e}")
+        print(f"  warning: could not delete bucket {{bucket}}: {{e}}")
 
 
 def nuke_prefixed_buckets(prefix, client=None):

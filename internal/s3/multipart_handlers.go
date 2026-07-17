@@ -456,22 +456,6 @@ func (h *ObjectHandlers) CompleteMultipartUpload(w http.ResponseWriter, r *http.
 		return
 	}
 
-	// Check conditional headers (If-Match / If-None-Match) against the existing object.
-	existingObj, objErr := h.Objects.GetByKey(r.Context(), bucketName, key)
-	if objErr != nil && !errors.Is(objErr, metadata.ErrObjectNotFound) {
-		h.logError("get existing object for precondition check", objErr, bucketName, key, "")
-		WriteS3Error(w, r, http.StatusInternalServerError, codeInternalError, messageInternalError)
-		return
-	}
-	if h.checkPreconditionFailed(w, r, existingObj) {
-		return
-	}
-	// S3 returns NoSuchKey when If-Match is set and the object does not exist.
-	if existingObj == nil && r.Header.Get("If-Match") != "" {
-		WriteS3Error(w, r, http.StatusNotFound, codeNoSuchKey, messageNoSuchKey)
-		return
-	}
-
 	release := h.acquireUploadLock(uploadID)
 	defer release()
 
@@ -624,7 +608,7 @@ func (h *ObjectHandlers) CompleteMultipartUpload(w http.ResponseWriter, r *http.
 
 	// CompleteUpload atomically verifies the upload still exists, creates the
 	// object, deletes the upload, and returns the previous object storage path.
-	oldStoragePath, err := h.MultipartUploads.CompleteUpload(r.Context(), obj, uploadID)
+	oldStoragePath, err := h.MultipartUploads.CompleteUpload(r.Context(), obj, uploadID, r.Header.Get("If-Match"), r.Header.Get("If-None-Match"))
 	if err != nil {
 		if errors.Is(err, metadata.ErrMultipartUploadNotFound) {
 			claimed = false
@@ -641,6 +625,23 @@ func (h *ObjectHandlers) CompleteMultipartUpload(w http.ResponseWriter, r *http.
 			_ = h.Storage.Delete(ctx, storagePath)
 			cancel()
 			WriteS3Error(w, r, http.StatusNotFound, codeNoSuchUpload, messageNoSuchUpload)
+			return
+		}
+		if errors.Is(err, metadata.ErrPreconditionFailed) {
+			claimed = false
+			ctx, cancel := withCleanupTimeout()
+			_ = h.Storage.Delete(ctx, storagePath)
+			cancel()
+			WriteS3Error(w, r, http.StatusPreconditionFailed, codePreconditionFailed, messagePreconditionFailed)
+			return
+		}
+		if errors.Is(err, metadata.ErrObjectNotFound) {
+			// If-Match was set but object doesn't exist.
+			claimed = false
+			ctx, cancel := withCleanupTimeout()
+			_ = h.Storage.Delete(ctx, storagePath)
+			cancel()
+			WriteS3Error(w, r, http.StatusNotFound, codeNoSuchKey, messageNoSuchKey)
 			return
 		}
 		h.logError("complete multipart upload", err, bucketName, key, storagePath)
