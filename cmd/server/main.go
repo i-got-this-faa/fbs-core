@@ -23,6 +23,7 @@ import (
 	"github.com/i-got-this-faa/fbs/internal/server"
 	"github.com/i-got-this-faa/fbs/internal/setup"
 	"github.com/i-got-this-faa/fbs/internal/storage"
+	appmiddleware "github.com/i-got-this-faa/fbs/internal/http/middleware"
 )
 
 func main() {
@@ -170,11 +171,13 @@ func main() {
 			})
 		})
 		r.Group(func(s3Routes chi.Router) {
+			s3Routes.Use(appmiddleware.S3Headers)
 			s3Routes.Use(auth.RequireAuthentication(authChain, writeS3AuthError))
 			s3.RegisterBucketRoutes(s3Routes, objectHandlers)
 			s3.RegisterObjectReadRoutes(s3Routes, objectHandlers)
 		})
 		r.Group(func(s3Routes chi.Router) {
+			s3Routes.Use(appmiddleware.S3Headers)
 			s3Routes.Use(auth.RequireAuthentication(authChain, writeS3AuthError))
 			s3.RegisterObjectMutationRoutes(s3Routes, objectHandlers)
 		})

@@ -59,6 +59,15 @@ func setObjectHeaders(w http.ResponseWriter, obj *metadata.Object, cacheControl 
 	if cacheControl != "" {
 		w.Header().Set("Cache-Control", cacheControl)
 	}
+	if obj.IsMultipart && obj.PartsCount > 0 {
+		w.Header().Set("x-amz-mp-parts-count", strconv.Itoa(obj.PartsCount))
+	}
+	for key, val := range obj.UserMetadata {
+		// Use direct map write to preserve lowercase x-amz-meta-* header name.
+		// Go's Header.Set() would canonicalize "x-amz-meta-foo" to "X-Amz-Meta-Foo",
+		// which causes botocore to read the metadata key as "Foo" instead of "foo".
+		w.Header()["x-amz-meta-"+key] = []string{val}
+	}
 }
 
 func mapAuthenticatedStorageReadError(w http.ResponseWriter, r *http.Request, h *ObjectHandlers, err error, obj *metadata.Object) {

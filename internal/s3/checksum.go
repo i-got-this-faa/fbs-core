@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"hash"
 	"hash/crc32"
+	"hash/crc64"
 	"io"
 	"net/http"
 	"strings"
@@ -96,6 +97,9 @@ func newChecksumPipeline(header http.Header) (*checksumPipeline, error) {
 	if err := addCRC32Check(header, "x-amz-checksum-crc32c", crc32.MakeTable(crc32.Castagnoli), &writers, &checks); err != nil {
 		return nil, err
 	}
+	if err := addCRC64NVME(header, &writers, &checks); err != nil {
+		return nil, err
+	}
 
 	return &checksumPipeline{
 		md5Hash: md5Hash,
@@ -130,12 +134,44 @@ func addCRC32Check(header http.Header, headerName string, table *crc32.Table, wr
 	return nil
 }
 
+func addCRC64NVME(header http.Header, writers *[]io.Writer, checks *[]checksumCheck) error {
+	headerName := "x-amz-checksum-crc64nvme"
+	value := strings.TrimSpace(header.Get(headerName))
+	if value == "" {
+		return nil
+	}
+	expected, err := decodeChecksum(value)
+	if err != nil || len(expected) != crc64.Size {
+		return fmt.Errorf("%s: %w", headerName, errInvalidChecksum)
+	}
+	h := crc64.New(crc64.MakeTable(crc64.ECMA))
+	*writers = append(*writers, h)
+	*checks = append(*checks, checksumCheck{
+		name:     headerName,
+		expected: expected,
+		sum: func() []byte {
+			return h.Sum(nil)
+		},
+	})
+	return nil
+}
+
 func (p *checksumPipeline) Reader(r io.Reader) io.Reader {
 	return io.TeeReader(r, p.writer)
 }
 
 func (p *checksumPipeline) ETag() string {
 	return hex.EncodeToString(p.md5Hash.Sum(nil))
+}
+
+// Checksums returns a map of all computed checksums keyed by header name.
+// Only includes checksums that were explicitly requested.
+func (p *checksumPipeline) Checksums() map[string]string {
+	cksum := make(map[string]string)
+	for _, c := range p.checks {
+		cksum[c.name] = base64.StdEncoding.EncodeToString(c.sum())
+	}
+	return cksum
 }
 
 func (p *checksumPipeline) Validate() error {

@@ -82,6 +82,10 @@ func (h *ObjectHandlers) ListObjectsV2(w http.ResponseWriter, r *http.Request) {
 
 	bucketName := chiBucketParam(r)
 	params, err := parseListObjectsV2Params(r)
+	if errors.Is(err, errInvalidMaxKeys) {
+		WriteS3Error(w, r, http.StatusBadRequest, codeInvalidArgument, messageInvalidArgument)
+		return
+	}
 	if err != nil {
 		WriteS3Error(w, r, http.StatusBadRequest, codeInvalidRequest, messageInvalidRequest)
 		return
@@ -109,7 +113,7 @@ func parseListObjectsV2Params(r *http.Request) (listObjectsV2Params, error) {
 	if rawMaxKeys := strings.TrimSpace(query.Get("max-keys")); rawMaxKeys != "" {
 		parsedMaxKeys, err := strconv.Atoi(rawMaxKeys)
 		if err != nil || parsedMaxKeys < 0 {
-			return listObjectsV2Params{}, errors.New("invalid max-keys")
+			return listObjectsV2Params{}, errInvalidMaxKeys
 		}
 		maxKeys = parsedMaxKeys
 	}

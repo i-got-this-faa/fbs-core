@@ -1,4 +1,4 @@
--- Initialize the database schema (v1 — matches runtime migration version 1).
+-- Initialize the database schema (v1 -- matches runtime migration version 1).
 -- SigV4 columns are added by migration 2 at application startup.
 
 CREATE TABLE IF NOT EXISTS users (
@@ -28,6 +28,12 @@ CREATE TABLE IF NOT EXISTS objects (
     storage_path   TEXT NOT NULL,
     created_at     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    is_multipart   INTEGER NOT NULL DEFAULT 0,
+    checksum_crc32    TEXT,
+    checksum_crc32c   TEXT,
+    checksum_crc64nvme TEXT,
+    checksum_sha1     TEXT,
+    checksum_sha256   TEXT,
     UNIQUE(bucket_name, key)
 );
 
@@ -50,6 +56,11 @@ CREATE TABLE IF NOT EXISTS multipart_parts (
     etag         TEXT NOT NULL,
     storage_path TEXT NOT NULL,
     created_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    checksum_crc32    TEXT,
+    checksum_crc32c   TEXT,
+    checksum_crc64nvme TEXT,
+    checksum_sha1     TEXT,
+    checksum_sha256   TEXT,
     PRIMARY KEY (upload_id, part_number)
 );
 

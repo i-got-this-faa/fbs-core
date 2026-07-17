@@ -92,16 +92,28 @@ func (h *ObjectHandlers) CopyObject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := h.now()
+
+	// Determine metadata: COPY inherits from source, REPLACE parses from request.
+	var userMeta map[string]string
+	directive := strings.ToUpper(strings.TrimSpace(r.Header.Get("x-amz-metadata-directive")))
+	switch directive {
+	case "", "COPY":
+		userMeta = sourceObject.UserMetadata
+	case "REPLACE":
+		userMeta = parseMetadataHeaders(r)
+	}
+
 	destinationObject := &metadata.Object{
-		ID:          h.newID(),
-		BucketName:  destinationBucket,
-		Key:         destinationKey,
-		Size:        size,
-		ETag:        sourceObject.ETag,
-		ContentType: contentType,
-		StoragePath: storagePath,
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		ID:           h.newID(),
+		BucketName:   destinationBucket,
+		Key:          destinationKey,
+		Size:         size,
+		ETag:         sourceObject.ETag,
+		ContentType:  contentType,
+		StoragePath:  storagePath,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+		UserMetadata: userMeta,
 	}
 	if err := h.Objects.Create(r.Context(), destinationObject); err != nil {
 		h.logError("create copied object metadata", err, destinationBucket, destinationKey, storagePath)

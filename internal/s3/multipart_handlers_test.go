@@ -612,12 +612,13 @@ func TestCompleteMultipartUploadValidationFailureResetsClaim(t *testing.T) {
 	uploadID := env.mustCreateMultipartUpload(t, "large.zip")
 
 	etag := env.mustUploadPart(t, uploadID, "large.zip", 1, "part one")
+	etag2 := env.mustUploadPart(t, uploadID, "large.zip", 2, "part two")
 
-	// Send an invalid complete request (parts out of order).
+	// Send an invalid complete request (parts out of order: 2 then 1).
 	completeXML := fmt.Sprintf(`<CompleteMultipartUpload>
+		<Part><PartNumber>2</PartNumber><ETag>%s</ETag></Part>
 		<Part><PartNumber>1</PartNumber><ETag>%s</ETag></Part>
-		<Part><PartNumber>1</PartNumber><ETag>%s</ETag></Part>
-	</CompleteMultipartUpload>`, etag, etag)
+	</CompleteMultipartUpload>`, etag2, etag)
 
 	resp := env.do(t, http.MethodPost, fmt.Sprintf("/%s/large.zip?uploadId=%s", env.bucket, uploadID), completeXML, nil)
 	if resp.Code != http.StatusBadRequest {

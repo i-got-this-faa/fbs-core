@@ -32,12 +32,10 @@ From the **repository root**:
 
 ```bash
 # 1) Run the core compatibility suite (managed temporary server)
-./compat/s3-tests/run.sh --keep 2>&1 | tee compat/s3-tests/results/last-run.log
+#    --keep preserves data/logs for inspection
+./compat/s3-tests/run.sh --keep
 
-# 2) Build / refresh the feature checklist from that log
-./compat/s3-tests/report.sh compat/s3-tests/results/last-run.log
-
-# 3) View results
+# 2) View results
 #    - Markdown: compat/s3-tests/results/checklist.md
 #    - Browser:  open compat/s3-tests/results/checklist.html
 xdg-open compat/s3-tests/results/checklist.html   # optional

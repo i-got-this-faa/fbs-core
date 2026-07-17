@@ -108,9 +108,11 @@ replication — everything lives on one disk.
 
 ### Consistency
 
-**AWS S3** provides read-after-write strong consistency for PUTs of new
-objects (most regions as of late 2020), with eventual consistency for some
-overwrite and delete operations in legacy scenarios.
+**AWS S3** has provided strong read-after-write consistency for all object
+operations (PUT, POST, DELETE, overwrite, GET, HEAD, LIST, multipart)
+since December 2020 in all commercial regions. Bucket-configuration
+changes (e.g., enabling versioning, modifying bucket policies) remain
+eventually consistent.
 
 **fbs-core** is **strongly consistent** for all operations — SQLite is the
 source of truth, and the write path uses an atomic rename + metadata upsert
@@ -170,8 +172,11 @@ later; until then they remain compatibility gaps, not promises.
 
 ## Compatibility testing
 
-Use `compat/s3-tests/` for AWS-like gap discovery. The default core filter
-drops permanent non-goals and large deferred clusters; see
+Use `compat/s3-tests/` for AWS-like gap discovery. The default `--core`
+filter drops only tests explicitly marked as permanent non-goals or large
+deferred clusters in the markers file; unmarked upstream tests still run
+and may produce failures. `--core` is not a complete exclusion or a
+guaranteed-green compatibility gate — see
 [`compat/s3-tests/markers.md`](../compat/s3-tests/markers.md).
 
 Claimed behavior is enforced by `go test ./...`, not by s3-tests CI gates.

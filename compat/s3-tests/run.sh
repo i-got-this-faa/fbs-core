@@ -20,7 +20,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 WORKDIR="${FBS_S3_TESTS_WORKDIR:-${SCRIPT_DIR}/.workdir}"
 S3_TESTS_DIR="${WORKDIR}/s3-tests"
 S3_TESTS_REPO="${FBS_S3_TESTS_REPO:-https://github.com/ceph/s3-tests.git}"
-S3_TESTS_REF="${FBS_S3_TESTS_REF:-master}"
+S3_TESTS_REF="${FBS_S3_TESTS_REF:-e3e1c240d}"
 MARKERS_FILE="${SCRIPT_DIR}/markers.core"
 SERVER_BIN="${WORKDIR}/fbs-server"
 SERVER_LOG="${WORKDIR}/fbs-server.log"
@@ -356,20 +356,7 @@ setup_python() {
   python -m pip install -q tox
 }
 
-build_marker_expr() {
-  if [[ ! -f "${MARKERS_FILE}" ]]; then
-    die "missing markers file: ${MARKERS_FILE}"
-  fi
-  awk '
-    /^[[:space:]]*#/ { next }
-    /^[[:space:]]*$/ { next }
-    {
-      gsub(/^[[:space:]]+|[[:space:]]+$/, "")
-      if (n++) printf " and "
-      printf "%s", $0
-    }
-  ' "${MARKERS_FILE}"
-}
+source "${SCRIPT_DIR}/lib/marker-expr.sh"
 
 run_tests() {
   # shellcheck disable=SC1091
@@ -378,13 +365,16 @@ run_tests() {
 
   local args=()
   if [[ "${MODE}" == "core" ]]; then
+    if [[ ! -f "${MARKERS_FILE}" ]]; then
+      die "missing markers file: ${MARKERS_FILE}"
+    fi
     local expr
-    expr="$(build_marker_expr)"
+    expr="$(build_marker_expr "${MARKERS_FILE}")"
     args+=(-m "${expr}")
     # Default path: boto3 functional suite. IAM/STS modules excluded by markers
     # and by not selecting those files when no explicit pytest args are given.
     if [[ ${#PYTEST_ARGS[@]} -eq 0 ]]; then
-      args+=(s3tests/functional)
+      args+=(s3tests/functional/test_s3.py s3tests/functional/test_headers.py s3tests/functional/test_utils.py)
     fi
   fi
   if [[ ${#PYTEST_ARGS[@]} -gt 0 ]]; then
