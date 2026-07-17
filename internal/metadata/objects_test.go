@@ -21,9 +21,16 @@ CREATE TABLE IF NOT EXISTS objects (
     storage_path   TEXT NOT NULL,
     created_at     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    is_multipart   INTEGER NOT NULL DEFAULT 0,
+    parts_count    INTEGER NOT NULL DEFAULT 0,
+    checksum_crc32 TEXT,
+    checksum_crc32c TEXT,
+    checksum_crc64nvme TEXT,
+    checksum_sha1 TEXT,
+    checksum_sha256 TEXT,
+    user_metadata  TEXT,
     UNIQUE(bucket_name, key)
 );
-
 CREATE INDEX IF NOT EXISTS idx_objects_bucket_prefix ON objects(bucket_name, key);
 `
 

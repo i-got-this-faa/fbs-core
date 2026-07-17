@@ -19,6 +19,7 @@ internal/setup/          first-start bootstrap API
 internal/storage/        local disk storage engine
 migrations/              SQLite migrations
 docs/                    completed project documentation
+compat/s3-tests/         optional ceph/s3-tests runner (not vendored)
 ```
 
 ## Tests
@@ -29,6 +30,35 @@ Run all tests:
 go test ./...
 ```
 
+### External S3 compatibility suite (ceph/s3-tests)
+
+Shared team harness under `compat/s3-tests/` (tracked in git). It clones
+[ceph/s3-tests](https://github.com/ceph/s3-tests) into a local `.workdir/`
+and runs it against a temporary fbs-core process (or an external endpoint).
+
+```bash
+./compat/s3-tests/run.sh --keep
+# writes results/last-run.log + results/checklist.md + results/checklist.html
+
+./compat/s3-tests/run.sh -- s3tests/functional/test_s3.py::test_bucket_list_empty
+./compat/s3-tests/run.sh --full
+```
+
+Open the feature checklist after a run:
+
+- `compat/s3-tests/results/checklist.md`
+- `compat/s3-tests/results/checklist.html`
+
+Default `--core` mode applies `compat/s3-tests/markers.core`. Why each
+marker is dropped or kept is documented in
+[`compat/s3-tests/markers.md`](../compat/s3-tests/markers.md) (mini-IAM grants
+are not AWS IAM/policy/STS — those markers stay excluded). Product scope:
+[`plan/s3-compatibility.md`](../plan/s3-compatibility.md).
+
+This is discovery and regression against AWS-like expectations, not the CI
+source of truth. Claimed fbs-core behavior is covered by `go test ./...`.
+Full team instructions: [`compat/s3-tests/README.md`](../compat/s3-tests/README.md).
+
 The test suite is package-focused and covers:
 
 - Config parsing and validation.
@@ -36,16 +66,26 @@ The test suite is package-focused and covers:
 - Setup bootstrap behavior.
 - Management endpoint contracts.
 - Bearer, SigV4, dev-mode, principal, and middleware auth behavior.
-- Metadata repositories, migrations, cache behavior, multipart state, users, buckets, objects, and management queries.
+- Authz evaluator (admin/owner/grants/prefix/list rules) and grant repository behavior.
+- Metadata repositories, migrations, cache behavior, multipart state, users, buckets, objects, grants, and management queries.
 - Storage writes, reads, deletes, path sanitization, and reconciliation.
-- S3 bucket, object, multipart, checksum, and compatibility behavior.
+- S3 bucket, object, multipart, checksum, grant-scoped access, and compatibility behavior.
 - Public read signing.
+
+## Adding S3 Operations and Actions
+
+When implementing a new S3 data-plane operation:
+
+1. Map it to an existing action in `internal/authz/actions.go`, or add a new action there and in `plan/access-control/access-control.md`.
+2. If the action should be grantable, add it to `GrantableActions` and to metadata grantable validation.
+3. Call the shared authz evaluator from the handler with the correct action, bucket, object key, and list prefix.
+4. Do not invent a private owner-only boolean path for normal bucket/object ops.
 
 ## Implementation Principles
 
 The codebase keeps behavior separated by package:
 
-- HTTP handlers translate protocol details to repository and storage calls.
+- HTTP handlers translate protocol details to repository and storage calls; authorization decisions come from `internal/authz`.
 - Metadata repositories own SQLite queries and transactional state changes.
 - Storage owns filesystem paths, temp files, file assembly, and reconciliation.
 - Auth owns credential parsing and principal creation.

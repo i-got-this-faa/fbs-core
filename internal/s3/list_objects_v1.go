@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/i-got-this-faa/fbs/internal/authz"
 )
 
 type listBucketV1Result struct {
@@ -33,13 +35,16 @@ type listObjectsV1Params struct {
 
 func (h *ObjectHandlers) ListObjectsV1(w http.ResponseWriter, r *http.Request) {
 	bucketName := chiBucketParam(r)
-	if !h.ensureBucket(w, r, bucketName) {
+	params, err := parseListObjectsV1Params(r)
+	if errors.Is(err, errInvalidMaxKeys) {
+		WriteS3Error(w, r, http.StatusBadRequest, codeInvalidArgument, messageInvalidArgument)
 		return
 	}
-
-	params, err := parseListObjectsV1Params(r)
 	if err != nil {
 		WriteS3Error(w, r, http.StatusBadRequest, codeInvalidRequest, messageInvalidRequest)
+		return
+	}
+	if !h.ensureBucketAction(w, r, bucketName, authz.ActionListBucket, "", params.prefix) {
 		return
 	}
 
@@ -62,7 +67,7 @@ func parseListObjectsV1Params(r *http.Request) (listObjectsV1Params, error) {
 	if rawMaxKeys := strings.TrimSpace(query.Get("max-keys")); rawMaxKeys != "" {
 		parsedMaxKeys, err := strconv.Atoi(rawMaxKeys)
 		if err != nil || parsedMaxKeys < 0 {
-			return listObjectsV1Params{}, errors.New("invalid max-keys")
+			return listObjectsV1Params{}, errInvalidMaxKeys
 		}
 		maxKeys = parsedMaxKeys
 	}

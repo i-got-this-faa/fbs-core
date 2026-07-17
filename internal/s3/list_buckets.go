@@ -3,6 +3,7 @@ package s3
 import (
 	"encoding/xml"
 	"net/http"
+	"sort"
 
 	"github.com/i-got-this-faa/fbs/internal/auth"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
@@ -36,15 +37,7 @@ func (h *ObjectHandlers) ListBuckets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var (
-		buckets []metadata.Bucket
-		err     error
-	)
-	if principal.Role == "admin" {
-		buckets, err = h.Buckets.List(r.Context())
-	} else {
-		buckets, err = h.Buckets.ListByOwner(r.Context(), principal.UserID)
-	}
+	buckets, err := h.listBucketsForPrincipal(r, principal)
 	if err != nil {
 		h.logError("list buckets", err, "", "", "")
 		WriteS3Error(w, r, http.StatusInternalServerError, codeInternalError, messageInternalError)
@@ -69,4 +62,58 @@ func (h *ObjectHandlers) ListBuckets(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/xml")
 	w.WriteHeader(http.StatusOK)
 	_ = xml.NewEncoder(w).Encode(result)
+}
+
+func (h *ObjectHandlers) listBucketsForPrincipal(r *http.Request, principal auth.Principal) ([]metadata.Bucket, error) {
+	if principal.Role == "admin" {
+		return h.Buckets.List(r.Context())
+	}
+
+	owned, err := h.Buckets.ListByOwner(r.Context(), principal.UserID)
+	if err != nil {
+		return nil, err
+	}
+
+	if h.Grants == nil {
+		return owned, nil
+	}
+
+	grantedNames, err := h.Grants.ListBucketNamesWithActiveGrants(r.Context(), principal.UserID)
+	if err != nil {
+		return nil, err
+	}
+	if len(grantedNames) == 0 {
+		return owned, nil
+	}
+
+	granted, err := h.Buckets.ListByNames(r.Context(), grantedNames)
+	if err != nil {
+		return nil, err
+	}
+
+	return mergeBucketsByName(owned, granted), nil
+}
+
+func mergeBucketsByName(owned, granted []metadata.Bucket) []metadata.Bucket {
+	byName := make(map[string]metadata.Bucket, len(owned)+len(granted))
+	for _, b := range owned {
+		byName[b.Name] = b
+	}
+	for _, b := range granted {
+		if _, exists := byName[b.Name]; !exists {
+			byName[b.Name] = b
+		}
+	}
+
+	merged := make([]metadata.Bucket, 0, len(byName))
+	for _, b := range byName {
+		merged = append(merged, b)
+	}
+	sort.Slice(merged, func(i, j int) bool {
+		if merged[i].CreatedAt.Equal(merged[j].CreatedAt) {
+			return merged[i].Name < merged[j].Name
+		}
+		return merged[i].CreatedAt.Before(merged[j].CreatedAt)
+	})
+	return merged
 }

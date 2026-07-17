@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -21,6 +22,8 @@ type BucketRepository interface {
 	GetByName(ctx context.Context, name string) (*Bucket, error)
 	List(ctx context.Context) ([]Bucket, error)
 	ListByOwner(ctx context.Context, ownerID string) ([]Bucket, error)
+	ListByNames(ctx context.Context, names []string) ([]Bucket, error)
+	UpdateOwner(ctx context.Context, name, ownerID string, expectedOwnerID string) error
 	Delete(ctx context.Context, name string) error
 }
 
@@ -119,6 +122,62 @@ func (r *sqliteBucketRepository) ListByOwner(ctx context.Context, ownerID string
 	}
 
 	return buckets, nil
+}
+
+func (r *sqliteBucketRepository) ListByNames(ctx context.Context, names []string) ([]Bucket, error) {
+	if len(names) == 0 {
+		return nil, nil
+	}
+
+	placeholders := make([]string, len(names))
+	args := make([]any, len(names))
+	for i, name := range names {
+		placeholders[i] = "?"
+		args[i] = name
+	}
+
+	q := fmt.Sprintf(`
+		SELECT name, owner_id, created_at
+		FROM buckets
+		WHERE name IN (%s)
+		ORDER BY created_at ASC`, strings.Join(placeholders, ", "))
+
+	rows, err := r.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list buckets by names: %w", err)
+	}
+	defer rows.Close()
+
+	var buckets []Bucket
+	for rows.Next() {
+		b, err := scanBucketRow(rows)
+		if err != nil {
+			return nil, fmt.Errorf("list buckets by names scan: %w", err)
+		}
+		buckets = append(buckets, *b)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list buckets by names rows: %w", err)
+	}
+	return buckets, nil
+}
+
+func (r *sqliteBucketRepository) UpdateOwner(ctx context.Context, name, ownerID string, expectedOwnerID string) error {
+	const q = `UPDATE buckets SET owner_id = ? WHERE name = ? AND owner_id = ?`
+
+	result, err := r.db.ExecContext(ctx, q, ownerID, name, expectedOwnerID)
+	if err != nil {
+		return fmt.Errorf("update bucket owner: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("update bucket owner rows affected: %w", err)
+	}
+	if rows == 0 {
+		return ErrBucketNotFound
+	}
+	return nil
 }
 
 func (r *sqliteBucketRepository) Delete(ctx context.Context, name string) error {

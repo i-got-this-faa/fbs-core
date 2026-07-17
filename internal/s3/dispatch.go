@@ -5,8 +5,12 @@ import "net/http"
 func (h *ObjectHandlers) DispatchBucketGet(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	switch {
-	case query.Has("versions"), query.Has("acl"), query.Has("cors"), query.Has("policy"), query.Has("uploads"), query.Has("uploadId"):
+	case query.Has("acl"), query.Has("cors"), query.Has("policy"):
 		h.NotImplemented(w, r)
+	case query.Has("versions"):
+		h.ListObjectVersions(w, r)
+	case query.Has("uploads"):
+		h.ListMultipartUploads(w, r)
 	case query.Has("location"):
 		h.GetBucketLocation(w, r)
 	case query.Get("list-type") == "2":
@@ -27,12 +31,26 @@ func (h *ObjectHandlers) DispatchBucketPut(w http.ResponseWriter, r *http.Reques
 	h.CreateBucket(w, r)
 }
 
+func (h *ObjectHandlers) DispatchBucketPost(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+	switch {
+	case query.Has("delete"):
+		// AWS DeleteObjects: POST /{bucket}?delete
+		h.DeleteObjects(w, r)
+	case query.Has("acl"), query.Has("cors"), query.Has("policy"), query.Has("uploads"), query.Has("uploadId"), query.Has("lifecycle"), query.Has("versioning"):
+		h.NotImplemented(w, r)
+	default:
+		WriteS3Error(w, r, http.StatusBadRequest, codeInvalidRequest, messageInvalidRequest)
+	}
+}
+
 func (h *ObjectHandlers) DispatchBucketDelete(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	switch {
 	case query.Has("cors"), query.Has("policy"), query.Has("uploads"), query.Has("uploadId"):
 		h.NotImplemented(w, r)
 	case query.Has("delete"):
+		// Non-standard verb; kept for compatibility with clients that send DELETE.
 		h.DeleteObjects(w, r)
 	default:
 		h.DeleteBucket(w, r)
@@ -41,7 +59,15 @@ func (h *ObjectHandlers) DispatchBucketDelete(w http.ResponseWriter, r *http.Req
 
 func (h *ObjectHandlers) DispatchObjectGet(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
-	if query.Has("acl") || query.Has("uploadId") || query.Has("uploads") {
+	if query.Has("uploadId") {
+		h.ListParts(w, r)
+		return
+	}
+	if query.Has("attributes") {
+		h.GetObjectAttributes(w, r)
+		return
+	}
+	if query.Has("acl") || query.Has("uploads") {
 		h.NotImplemented(w, r)
 		return
 	}

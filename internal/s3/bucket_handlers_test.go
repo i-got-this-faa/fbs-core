@@ -348,7 +348,7 @@ func TestListObjectsV1InvalidMaxKeys(t *testing.T) {
 	if resp.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400; body=%s", resp.Code, resp.Body.String())
 	}
-	assertS3ErrorCode(t, resp.Body.Bytes(), codeInvalidRequest)
+	assertS3ErrorCode(t, resp.Body.Bytes(), codeInvalidArgument)
 }
 
 func TestListObjectsV2Prefix(t *testing.T) {
@@ -576,11 +576,13 @@ func TestDeleteObjects(t *testing.T) {
 	env := newObjectTestEnv(t)
 	env.mustPut(t, "a.txt", "a")
 	env.mustPut(t, "b.txt", "b")
+	env.mustPut(t, "c.txt", "c")
 
+	// Standard S3 multi-object delete uses POST (boto3 / AWS CLI).
 	body := `<Delete><Object><Key>a.txt</Key></Object><Object><Key>missing.txt</Key></Object></Delete>`
-	resp := env.do(t, http.MethodDelete, "/"+env.bucket+"?delete", body, deleteObjectsHeaders(body))
+	resp := env.do(t, http.MethodPost, "/"+env.bucket+"?delete", body, deleteObjectsHeaders(body))
 	if resp.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200; body=%s", resp.Code, resp.Body.String())
+		t.Fatalf("POST status = %d, want 200; body=%s", resp.Code, resp.Body.String())
 	}
 	var result deleteObjectsResult
 	if err := xml.Unmarshal(resp.Body.Bytes(), &result); err != nil {
@@ -593,8 +595,15 @@ func TestDeleteObjects(t *testing.T) {
 		t.Fatalf("deleted object lookup err = %v, want ErrObjectNotFound", err)
 	}
 
+	// DELETE ?delete remains accepted for compatibility.
+	compatBody := `<Delete><Object><Key>c.txt</Key></Object></Delete>`
+	compat := env.do(t, http.MethodDelete, "/"+env.bucket+"?delete", compatBody, deleteObjectsHeaders(compatBody))
+	if compat.Code != http.StatusOK {
+		t.Fatalf("DELETE status = %d, want 200; body=%s", compat.Code, compat.Body.String())
+	}
+
 	quietBody := `<Delete><Quiet>true</Quiet><Object><Key>b.txt</Key></Object></Delete>`
-	quiet := env.do(t, http.MethodDelete, "/"+env.bucket+"?delete", quietBody, deleteObjectsHeaders(quietBody))
+	quiet := env.do(t, http.MethodPost, "/"+env.bucket+"?delete", quietBody, deleteObjectsHeaders(quietBody))
 	if quiet.Code != http.StatusOK {
 		t.Fatalf("quiet status = %d, want 200; body=%s", quiet.Code, quiet.Body.String())
 	}
@@ -773,7 +782,6 @@ func TestNotImplementedSubresources(t *testing.T) {
 		method string
 		path   string
 	}{
-		{http.MethodGet, "/" + env.bucket + "?versions"},
 		{http.MethodGet, "/" + env.bucket + "?acl"},
 		{http.MethodPut, "/" + env.bucket + "?acl"},
 		{http.MethodGet, "/" + env.bucket + "/object.txt?acl"},
@@ -784,7 +792,6 @@ func TestNotImplementedSubresources(t *testing.T) {
 		{http.MethodGet, "/" + env.bucket + "?policy"},
 		{http.MethodPut, "/" + env.bucket + "?policy"},
 		{http.MethodDelete, "/" + env.bucket + "?policy"},
-		{http.MethodGet, "/" + env.bucket + "?uploads"},
 	}
 	for _, tc := range cases {
 		resp := env.do(t, tc.method, tc.path, "", nil)
@@ -960,10 +967,13 @@ func newScopedS3TestEnv(t *testing.T, principal auth.Principal) objectTestEnv {
 		t.Fatalf("new storage: %v", err)
 	}
 	objectRepo := metadata.NewObjectRepository(db)
+	grantRepo := metadata.NewGrantRepository(db)
 	handlers := &ObjectHandlers{
 		Users:   userRepo,
 		Buckets: bucketRepo,
 		Objects: objectRepo,
+		Grants:  grantRepo,
+		Authz:   NewAuthzEvaluator(grantRepo),
 		Storage: disk,
 		Logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}
@@ -983,6 +993,7 @@ func newScopedS3TestEnv(t *testing.T, principal auth.Principal) objectTestEnv {
 		users:   userRepo,
 		buckets: bucketRepo,
 		objects: objectRepo,
+		grants:  grantRepo,
 		storage: disk,
 		bucket:  "member-bucket",
 		dataDir: t.TempDir(),
@@ -1020,10 +1031,13 @@ func newSigV4S3TestEnv(t *testing.T) objectTestEnv {
 		t.Fatalf("new storage: %v", err)
 	}
 	objectRepo := metadata.NewObjectRepository(db)
+	grantRepo := metadata.NewGrantRepository(db)
 	handlers := &ObjectHandlers{
 		Users:   userRepo,
 		Buckets: bucketRepo,
 		Objects: objectRepo,
+		Grants:  grantRepo,
+		Authz:   NewAuthzEvaluator(grantRepo),
 		Storage: disk,
 	}
 	authChain := &auth.ChainAuthenticator{
@@ -1046,6 +1060,7 @@ func newSigV4S3TestEnv(t *testing.T) objectTestEnv {
 		users:   userRepo,
 		buckets: bucketRepo,
 		objects: objectRepo,
+		grants:  grantRepo,
 		storage: disk,
 		sigv4:   sigv4,
 		bucket:  bucketName,

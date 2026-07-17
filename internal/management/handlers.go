@@ -35,6 +35,7 @@ type Handlers struct {
 	Objects          metadata.ObjectRepository
 	Activity         metadata.ActivityRepository
 	Users            metadata.UserRepository
+	Grants           metadata.GrantRepository
 	Storage          storage.DiskEngine
 	Config           config.Config
 	PublicReadSigner *publicread.Signer
@@ -281,6 +282,10 @@ func (h *Handlers) publicReadTTL(w http.ResponseWriter, r *http.Request) (time.D
 	if req.ExpiresInSeconds != nil {
 		if *req.ExpiresInSeconds <= 0 {
 			writeError(w, http.StatusBadRequest, errorCodeInvalidRequest, "expires_in_seconds must be positive")
+			return 0, false
+		}
+		if *req.ExpiresInSeconds > int64(h.Config.PublicReadMaxTTL/time.Second) {
+			writeError(w, http.StatusBadRequest, errorCodeInvalidRequest, "expires_in_seconds exceeds maximum TTL")
 			return 0, false
 		}
 		ttl = time.Duration(*req.ExpiresInSeconds) * time.Second

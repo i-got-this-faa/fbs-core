@@ -11,6 +11,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	"github.com/i-got-this-faa/fbs/internal/authz"
 )
 
 const maxDeleteObjects = 1000
@@ -30,15 +32,29 @@ type deleteObjectsResult struct {
 	XMLName xml.Name             `xml:"DeleteResult"`
 	Xmlns   string               `xml:"xmlns,attr"`
 	Deleted []deletedObjectEntry `xml:"Deleted,omitempty"`
+	Errors  []deleteObjectError  `xml:"Error,omitempty"`
 }
 
 type deletedObjectEntry struct {
 	Key string `xml:"Key"`
 }
 
+type deleteObjectError struct {
+	Key     string `xml:"Key"`
+	Code    string `xml:"Code"`
+	Message string `xml:"Message"`
+}
+
 func (h *ObjectHandlers) DeleteObjects(w http.ResponseWriter, r *http.Request) {
 	bucketName := chiBucketParam(r)
-	if !h.ensureBucket(w, r, bucketName) {
+	bucket, ok := h.loadBucket(w, r, bucketName)
+	if !ok {
+		return
+	}
+	// Deny callers with no relationship to the bucket before per-key auth.
+	// Without this, strangers get 200 + AccessDenied errors and can tell the
+	// bucket exists more cheaply than via other ops' 403 shape consistency.
+	if !h.authorizeBucketRelationship(w, r, bucket) {
 		return
 	}
 
@@ -69,9 +85,27 @@ func (h *ObjectHandlers) DeleteObjects(w http.ResponseWriter, r *http.Request) {
 	result := deleteObjectsResult{
 		Xmlns:   "http://s3.amazonaws.com/doc/2006-03-01/",
 		Deleted: make([]deletedObjectEntry, 0, len(req.Objects)),
+		Errors:  make([]deleteObjectError, 0),
 	}
 	for _, requestedObject := range req.Objects {
 		key := requestedObject.Key
+		allowed, authErr := h.authorizeQuiet(r, authz.ActionDeleteObject, bucketName, key, bucket)
+		if authErr != nil {
+			h.logError("authorize delete object in batch", authErr, bucketName, key, "")
+			WriteS3Error(w, r, http.StatusInternalServerError, codeInternalError, messageInternalError)
+			return
+		}
+		if !allowed {
+			// Quiet mode suppresses <Deleted> entries only; per-key <Error>
+			// entries must still be returned (AWS S3 multi-delete contract).
+			result.Errors = append(result.Errors, deleteObjectError{
+				Key:     key,
+				Code:    codeAccessDenied,
+				Message: messageAccessDenied,
+			})
+			continue
+		}
+
 		obj, existed, err := h.deleteObject(r, bucketName, key)
 		if err != nil {
 			h.logError("delete object in batch", err, bucketName, key, "")

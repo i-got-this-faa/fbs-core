@@ -1,5 +1,7 @@
 package s3
 
+import "errors"
+
 const (
 	codeBucketAlreadyExists       = "BucketAlreadyExists"
 	codeBucketAlreadyOwnedByYou   = "BucketAlreadyOwnedByYou"
@@ -8,18 +10,23 @@ const (
 	codeBadDigest                 = "BadDigest"
 	codeEntityTooSmall            = "EntityTooSmall"
 	codeInternalError             = "InternalError"
+	codeInvalidArgument           = "InvalidArgument"
 	codeInvalidBucketName         = "InvalidBucketName"
 	codeInvalidDigest             = "InvalidDigest"
 	codeInvalidLocationConstraint = "InvalidLocationConstraint"
 	codeInvalidPart               = "InvalidPart"
 	codeInvalidPartOrder          = "InvalidPartOrder"
+	codeInvalidRange              = "InvalidRange"
 	codeInvalidRequest            = "InvalidRequest"
 	codeMalformedXML              = "MalformedXML"
 	codeNoSuchBucket              = "NoSuchBucket"
 	codeNoSuchKey                 = "NoSuchKey"
-	codeNotImplemented            = "NotImplemented"
 	codeNoSuchUpload              = "NoSuchUpload"
+	codeNotImplemented            = "NotImplemented"
+	codePreconditionFailed        = "PreconditionFailed"
 )
+
+var errRangeExceedsSize = errors.New("range exceeds object size")
 
 const (
 	messageBucketAlreadyExists       = "The requested bucket name is not available."
@@ -29,6 +36,7 @@ const (
 	messageBadDigest                 = "The Content-MD5 or checksum you specified did not match what we received."
 	messageEntityTooSmall            = "Your proposed upload is smaller than the minimum allowed object size."
 	messageInternalError             = "We encountered an internal error. Please try again."
+	messageInvalidArgument           = "Invalid argument."
 	messageInvalidBucketName         = "The specified bucket is not valid."
 	messageInvalidDigest             = "The Content-MD5 you specified was invalid."
 	messageInvalidLocationConstraint = "The specified location-constraint is not valid."
@@ -40,4 +48,7 @@ const (
 	messageNoSuchKey                 = "The specified key does not exist."
 	messageNotImplemented            = "A header or query you provided implies functionality that is not implemented."
 	messageNoSuchUpload              = "The specified multipart upload does not exist."
+	messagePreconditionFailed        = "At least one of the pre-conditions you specified did not hold."
 )
+
+var errInvalidMaxKeys = errors.New("invalid max-keys")

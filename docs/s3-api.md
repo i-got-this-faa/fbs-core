@@ -4,18 +4,22 @@ The S3-compatible API is rooted at `/`. Protected S3 routes accept Bearer tokens
 
 The implemented region is `us-east-1`.
 
+## Authorization
+
+After authentication, each data-plane operation is authorized through a fixed action catalog (`s3:ListBucket`, `s3:GetObject`, `s3:PutObject`, and related actions). Evaluation order is: **admin** → **bucket owner** → **active resource grant** (optional key prefix) → **deny**. Denied calls return S3 `AccessDenied`. Grants are managed via the Management API, not via S3 `?acl` or `?policy` (those remain unsupported). See `plan/access-control/access-control.md`.
+
 ## Supported Bucket Operations
 
 | Operation | Request | Notes |
 | --- | --- | --- |
-| List buckets | `GET /` | Admins see all buckets. Members see owned buckets. |
-| Create bucket | `PUT /{bucket}` | Empty body or `CreateBucketConfiguration` with empty or `us-east-1` location. |
-| Head bucket | `HEAD /{bucket}` | Returns existence/authorization-compatible S3 response. |
-| Get bucket location | `GET /{bucket}?location` | Returns region information. |
-| List objects v1 | `GET /{bucket}` or `GET /{bucket}?list-type=1` | Supports `prefix`, `delimiter`, `marker`, `max-keys`, `encoding-type=url`. |
-| List objects v2 | `GET /{bucket}?list-type=2` | Supports `prefix`, `delimiter`, `start-after`, `continuation-token`, `max-keys`, `encoding-type=url`. |
-| Delete bucket | `DELETE /{bucket}` | Requires bucket to be empty. |
-| Delete objects | `DELETE /{bucket}?delete` | Deletes up to 1000 objects from an XML request body. |
+| List buckets | `GET /` | Admins see all buckets. Members see owned buckets plus any bucket with an active grant. |
+| Create bucket | `PUT /{bucket}` | Empty body or `CreateBucketConfiguration` with empty or `us-east-1` location. Any authenticated user may create; becomes owner. |
+| Head bucket | `HEAD /{bucket}` | Requires `s3:ListBucket` (or owner/admin). |
+| Get bucket location | `GET /{bucket}?location` | Requires `s3:ListBucket` (or owner/admin). |
+| List objects v1 | `GET /{bucket}` or `GET /{bucket}?list-type=1` | Requires `s3:ListBucket`; supports `prefix`, `delimiter`, `marker`, `max-keys`, `encoding-type=url`. |
+| List objects v2 | `GET /{bucket}?list-type=2` | Requires `s3:ListBucket`; supports `prefix`, `delimiter`, `start-after`, `continuation-token`, `max-keys`, `encoding-type=url`. |
+| Delete bucket | `DELETE /{bucket}` | Admin or owner only; not grantable. Requires bucket to be empty. |
+| Delete objects | `POST /{bucket}?delete` (also `DELETE /{bucket}?delete`) | Each key authorized for `s3:DeleteObject`; denied keys are always returned as per-key errors. Quiet mode suppresses only successful `<Deleted>` entries. AWS clients use POST. |
 
 ## Supported Object Operations
 

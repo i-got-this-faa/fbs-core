@@ -259,6 +259,18 @@ func (r *cachedBucketRepository) ListByOwner(ctx context.Context, ownerID string
 	return r.delegate.ListByOwner(ctx, ownerID)
 }
 
+func (r *cachedBucketRepository) ListByNames(ctx context.Context, names []string) ([]Bucket, error) {
+	return r.delegate.ListByNames(ctx, names)
+}
+
+func (r *cachedBucketRepository) UpdateOwner(ctx context.Context, name, ownerID string, expectedOwnerID string) error {
+	if err := r.delegate.UpdateOwner(ctx, name, ownerID, expectedOwnerID); err != nil {
+		return err
+	}
+	r.cache.evictBucket(name)
+	return nil
+}
+
 func (r *cachedBucketRepository) Delete(ctx context.Context, name string) error {
 	if err := r.delegate.Delete(ctx, name); err != nil {
 		return err

@@ -7,16 +7,17 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/i-got-this-faa/fbs/internal/authz"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
 	"github.com/i-got-this-faa/fbs/internal/storage"
 )
 
 func (h *ObjectHandlers) loadObjectForRead(w http.ResponseWriter, r *http.Request, bucketName, key string) (*metadata.Object, bool) {
-	if !h.ensureBucket(w, r, bucketName) {
-		return nil, false
-	}
 	if key == "" {
 		WriteS3Error(w, r, http.StatusBadRequest, codeInvalidRequest, messageInvalidRequest)
+		return nil, false
+	}
+	if !h.ensureBucketAction(w, r, bucketName, authz.ActionGetObject, key, "") {
 		return nil, false
 	}
 
@@ -57,6 +58,15 @@ func setObjectHeaders(w http.ResponseWriter, obj *metadata.Object, cacheControl 
 	}
 	if cacheControl != "" {
 		w.Header().Set("Cache-Control", cacheControl)
+	}
+	if obj.IsMultipart && obj.PartsCount > 0 {
+		w.Header().Set("x-amz-mp-parts-count", strconv.Itoa(obj.PartsCount))
+	}
+	for key, val := range obj.UserMetadata {
+		// Use direct map write to preserve lowercase x-amz-meta-* header name.
+		// Go's Header.Set() would canonicalize "x-amz-meta-foo" to "X-Amz-Meta-Foo",
+		// which causes botocore to read the metadata key as "Foo" instead of "foo".
+		w.Header()["x-amz-meta-"+key] = []string{val}
 	}
 }
 
