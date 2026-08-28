@@ -83,8 +83,7 @@ func isSQLiteForeignKeyError(err error) bool {
 	if err == nil {
 		return false
 	}
-	var sqliteErr *sqlite.Error
-	if errors.As(err, &sqliteErr) {
+	if sqliteErr, ok := errors.AsType[*sqlite.Error](err); ok {
 		return sqliteErr.Code() == lib.SQLITE_CONSTRAINT_FOREIGNKEY
 	}
 	return false

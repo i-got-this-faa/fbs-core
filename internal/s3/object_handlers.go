@@ -10,9 +10,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"uuid"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"github.com/i-got-this-faa/fbs/internal/authz"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
 	"github.com/i-got-this-faa/fbs/internal/publicread"
@@ -256,7 +256,7 @@ func (h *ObjectHandlers) GetObjectAttributes(w http.ResponseWriter, r *http.Requ
 	}
 	requested := make(map[string]bool)
 	validAttrs := map[string]bool{"etag": true, "checksum": true, "objectparts": true, "storageclass": true, "objectsize": true}
-	for _, attr := range strings.Split(attrHeader, ",") {
+	for attr := range strings.SplitSeq(attrHeader, ",") {
 		a := strings.TrimSpace(strings.ToLower(attr))
 		if a == "" {
 			continue
@@ -383,7 +383,7 @@ func (h *ObjectHandlers) newID() string {
 	if h.NewID != nil {
 		return h.NewID()
 	}
-	return uuid.NewString()
+	return uuid.New().String()
 }
 
 func (h *ObjectHandlers) logError(message string, err error, bucketName, key, storagePath string) {

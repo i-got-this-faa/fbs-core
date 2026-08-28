@@ -166,7 +166,7 @@ func requestHasSignedHeader(r *http.Request, headerName string) bool {
 	}
 
 	needle := strings.ToLower(headerName)
-	for _, signedHeader := range strings.Split(principal.SignedHeaders, ";") {
+	for signedHeader := range strings.SplitSeq(principal.SignedHeaders, ";") {
 		if strings.EqualFold(strings.TrimSpace(signedHeader), needle) {
 			return true
 		}

@@ -73,7 +73,7 @@ func (s *Signer) Verify(path string, expiresUnix string, signatureHex string) er
 
 func ObjectPath(bucketName, key string) string {
 	escapedKeySegments := make([]string, 0, strings.Count(key, "/")+1)
-	for _, segment := range strings.Split(key, "/") {
+	for segment := range strings.SplitSeq(key, "/") {
 		escapedKeySegments = append(escapedKeySegments, url.PathEscape(segment))
 	}
 

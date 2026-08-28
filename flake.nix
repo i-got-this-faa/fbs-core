@@ -16,8 +16,10 @@
       system:
       let
         pkgs = import nixpkgs { inherit system; };
+        go = pkgs.go_1_27;
 
         fbs-core = pkgs.buildGoModule {
+          inherit go;
           pname = "fbs-core";
           version = "0.2.0";
           src = ./.;
@@ -31,11 +33,11 @@
         packages.default = fbs-core;
 
         devShells.default = pkgs.mkShell {
-          packages = with pkgs; [
+          packages = [
             go
-            gopls
-            gotools
-            golangci-lint
+            pkgs.gopls
+            pkgs.gotools
+            pkgs.golangci-lint
           ];
 
           shellHook = ''

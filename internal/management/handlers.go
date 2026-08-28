@@ -10,9 +10,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"uuid"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"github.com/i-got-this-faa/fbs/internal/auth"
 	"github.com/i-got-this-faa/fbs/internal/config"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
@@ -721,7 +721,7 @@ func (h *Handlers) recordActivity(r *http.Request, action, bucketName, key strin
 	}
 
 	if err := h.Activity.Create(r.Context(), &metadata.ObjectActivity{
-		ID:          uuid.NewString(),
+		ID:          uuid.New().String(),
 		Action:      action,
 		BucketName:  bucketName,
 		ObjectKey:   key,

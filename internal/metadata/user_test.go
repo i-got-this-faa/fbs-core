@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"testing"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	_ "modernc.org/sqlite"
 )
 
@@ -50,7 +50,7 @@ func openTestDB(t *testing.T) *sql.DB {
 func newTestUser() *User {
 	now := time.Now().UTC().Truncate(time.Second)
 	return &User{
-		ID:               uuid.NewString(),
+		ID:               uuid.New().String(),
 		DisplayName:      "Alice",
 		AccessKeyID:      "AKIAIOSFODNN7EXAMPLE",
 		SecretHash:       "sha256hashvalue",
@@ -84,7 +84,7 @@ func TestUserCreate_DuplicateAccessKeyID(t *testing.T) {
 
 	// Same access_key_id, different id — must violate UNIQUE constraint.
 	duplicate := *u
-	duplicate.ID = uuid.NewString()
+	duplicate.ID = uuid.New().String()
 	if err := repo.Create(ctx, &duplicate); err == nil {
 		t.Fatal("expected error on duplicate access_key_id, got nil")
 	}
@@ -94,18 +94,18 @@ func TestUserCreate_MultipleWithoutSigV4(t *testing.T) {
 	repo := NewUserRepository(openTestDB(t))
 	ctx := context.Background()
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		u := &User{
-			ID:             uuid.NewString(),
-			DisplayName:    fmt.Sprintf("NoSigV4 %d", i),
-			AccessKeyID:    fmt.Sprintf("key_no_sigv4_%d", i),
-			SecretHash:     "hash",
+			ID:               uuid.New().String(),
+			DisplayName:      fmt.Sprintf("NoSigV4 %d", i),
+			AccessKeyID:      fmt.Sprintf("key_no_sigv4_%d", i),
+			SecretHash:       "hash",
 			SigV4AccessKeyID: "",
 			SigV4SecretKey:   "",
-			Role:           "member",
-			IsActive:       true,
-			CreatedAt:      time.Now().UTC().Truncate(time.Second),
-			UpdatedAt:      time.Now().UTC().Truncate(time.Second),
+			Role:             "member",
+			IsActive:         true,
+			CreatedAt:        time.Now().UTC().Truncate(time.Second),
+			UpdatedAt:        time.Now().UTC().Truncate(time.Second),
 		}
 		if err := repo.Create(ctx, u); err != nil {
 			t.Fatalf("Create user %d: %v", i, err)
@@ -154,16 +154,16 @@ func TestUserRead_LegacyUserWithNullSigV4(t *testing.T) {
 
 	// Simulate a pre-F5 user with NULL sigv4 columns
 	u := &User{
-		ID:             uuid.NewString(),
-		DisplayName:    "Legacy User",
-		AccessKeyID:    "AKIA_LEGACY",
-		SecretHash:     "legacyhash",
+		ID:               uuid.New().String(),
+		DisplayName:      "Legacy User",
+		AccessKeyID:      "AKIA_LEGACY",
+		SecretHash:       "legacyhash",
 		SigV4AccessKeyID: "",
 		SigV4SecretKey:   "",
-		Role:           "member",
-		IsActive:       true,
-		CreatedAt:      time.Now().UTC().Truncate(time.Second),
-		UpdatedAt:      time.Now().UTC().Truncate(time.Second),
+		Role:             "member",
+		IsActive:         true,
+		CreatedAt:        time.Now().UTC().Truncate(time.Second),
+		UpdatedAt:        time.Now().UTC().Truncate(time.Second),
 	}
 	if err := repo.Create(ctx, u); err != nil {
 		t.Fatalf("Create: %v", err)
@@ -279,7 +279,7 @@ func TestUserList(t *testing.T) {
 	// Insert two users.
 	u1 := newTestUser()
 	u2 := &User{
-		ID:               uuid.NewString(),
+		ID:               uuid.New().String(),
 		DisplayName:      "Bob",
 		AccessKeyID:      "AKIAI2NDUSER",
 		SecretHash:       "anotherhash",
@@ -356,8 +356,8 @@ func TestUserUpdate_LegacyUserPreservesNullSigV4(t *testing.T) {
 	ctx := context.Background()
 
 	// Simulate two pre-F5 users by inserting rows without SigV4 columns.
-	for i := 0; i < 2; i++ {
-		id := uuid.NewString()
+	for i := range 2 {
+		id := uuid.New().String()
 		_, err := repo.(*sqliteUserRepository).db.ExecContext(ctx,
 			`INSERT INTO users (id, display_name, access_key_id, secret_hash, role) VALUES (?, ?, ?, ?, ?)`,
 			id,

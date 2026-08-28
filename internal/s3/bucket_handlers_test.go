@@ -636,7 +636,7 @@ func TestDeleteObjectsInvalidRequests(t *testing.T) {
 
 	var tooMany strings.Builder
 	tooMany.WriteString("<Delete>")
-	for i := 0; i < maxDeleteObjects+1; i++ {
+	for i := range maxDeleteObjects + 1 {
 		tooMany.WriteString(fmt.Sprintf("<Object><Key>key-%d</Key></Object>", i))
 	}
 	tooMany.WriteString("</Delete>")

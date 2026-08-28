@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"uuid"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"github.com/i-got-this-faa/fbs/internal/auth"
 	"github.com/i-got-this-faa/fbs/internal/authz"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
@@ -126,7 +126,7 @@ func (h *Handlers) CreateBucketGrants(w http.ResponseWriter, r *http.Request) {
 	var createdGrants []metadata.Grant
 	for _, action := range input.actions {
 		grant := &metadata.Grant{
-			ID:            uuid.NewString(),
+			ID:            uuid.New().String(),
 			BucketName:    bucket.Name,
 			GranteeUserID: grantee.ID,
 			Action:        action,

@@ -6,7 +6,7 @@
 
 The `fbs-core` backend handles all S3-compatible data operations, disk I/O, and exposes a Management API for external dashboards (such as a Web Dashboard or Terminal Dashboard). 
 
-- **Language:** Go
+- **Language:** Go 1.27
 - **Storage Metadata:** SQLite (WAL mode)
 - **Object Storage:** Local File System (Zero-copy transfers utilizing OS Page Cache `sendfile`)
 - **Routing:** `chi` router

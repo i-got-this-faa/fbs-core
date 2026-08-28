@@ -24,6 +24,14 @@ compat/s3-tests/         optional ceph/s3-tests runner (not vendored)
 
 ## Tests
 
+The repository targets Go 1.27. Docker builds and the Nix development shell
+use the same minor version. Confirm the active toolchain before running local
+checks:
+
+```bash
+go version
+```
+
 Run all tests:
 
 ```bash
@@ -133,4 +141,3 @@ Writes should preserve the current commit order:
 2. Rename into place.
 3. Commit metadata.
 4. Clean old files after successful metadata commit.
-

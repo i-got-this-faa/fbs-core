@@ -24,10 +24,7 @@ func (h *ObjectHandlers) ListObjectVersions(w http.ResponseWriter, r *http.Reque
 			WriteS3Error(w, r, http.StatusBadRequest, codeInvalidArgument, messageInvalidArgument)
 			return
 		}
-		maxKeys = parsed
-		if maxKeys > 1000 {
-			maxKeys = 1000
-		}
+		maxKeys = min(parsed, 1000)
 	}
 
 	keyMarker := r.URL.Query().Get("key-marker")

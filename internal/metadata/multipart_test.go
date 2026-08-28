@@ -6,8 +6,7 @@ import (
 	"errors"
 	"testing"
 	"time"
-
-	"github.com/google/uuid"
+	"uuid"
 )
 
 const createMultipartTables = `
@@ -71,9 +70,9 @@ func insertTestBucket(t *testing.T, db *sql.DB) string {
 func newTestMultipartUpload(bucketName string) *MultipartUpload {
 	now := time.Now().UTC().Truncate(time.Second)
 	return &MultipartUpload{
-		ID:              uuid.NewString(),
+		ID:              uuid.New().String(),
 		BucketName:      bucketName,
-		Key:             "test-key-" + uuid.NewString()[:8],
+		Key:             "test-key-" + uuid.New().String()[:8],
 		ContentType:     "application/octet-stream",
 		Status:          "active",
 		CreatedAt:       now,
@@ -87,7 +86,7 @@ func newTestMultipartPart(uploadID string, partNum int) *MultipartPart {
 		PartNumber:  partNum,
 		Size:        1024,
 		ETag:        "d41d8cd98f00b204e9800998ecf8427e",
-		StoragePath: "data/" + uuid.NewString(),
+		StoragePath: "data/" + uuid.New().String(),
 		CreatedAt:   time.Now().UTC().Truncate(time.Second),
 	}
 }
@@ -342,7 +341,7 @@ func TestMultipartUploadCompleteUpload(t *testing.T) {
 	}
 
 	obj := &Object{
-		ID:          uuid.NewString(),
+		ID:          uuid.New().String(),
 		BucketName:  bucketName,
 		Key:         upload.Key,
 		Size:        1024,
@@ -401,7 +400,7 @@ func TestMultipartUploadCompleteUpload_OverwriteExistingObject(t *testing.T) {
 	}
 
 	obj := &Object{
-		ID:          uuid.NewString(),
+		ID:          uuid.New().String(),
 		BucketName:  bucketName,
 		Key:         upload.Key,
 		Size:        2048,
@@ -440,7 +439,7 @@ func TestMultipartUploadCompleteUpload_NotFound(t *testing.T) {
 
 	bucketName := insertTestBucket(t, db)
 	obj := &Object{
-		ID:          uuid.NewString(),
+		ID:          uuid.New().String(),
 		BucketName:  bucketName,
 		Key:         "test-key",
 		Size:        1024,
@@ -475,7 +474,7 @@ func TestMultipartUploadCompleteUpload_RejectNonCompleting(t *testing.T) {
 	}
 
 	obj := &Object{
-		ID:          uuid.NewString(),
+		ID:          uuid.New().String(),
 		BucketName:  bucketName,
 		Key:         upload.Key,
 		Size:        1024,
