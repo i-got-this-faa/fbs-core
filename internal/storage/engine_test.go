@@ -1,9 +1,11 @@
 package storage
+
 import (
 	"os"
 	"path/filepath"
 	"testing"
 )
+
 func TestNewCreatesDataAndTmpDirs(t *testing.T) {
 	t.Parallel()
 	baseDir := t.TempDir()

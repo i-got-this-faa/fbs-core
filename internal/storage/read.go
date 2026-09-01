@@ -1,10 +1,12 @@
 package storage
+
 import (
 	"context"
 	"errors"
 	"io"
 	"os"
 )
+
 func (e *engine) Read(ctx context.Context, storagePath string) (io.ReadCloser, error) {
 	select {
 	case <-ctx.Done():

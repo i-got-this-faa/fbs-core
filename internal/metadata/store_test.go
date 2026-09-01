@@ -6,8 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
-
-	"github.com/google/uuid"
+	"uuid"
 )
 
 func TestOpenDB(t *testing.T) {
@@ -126,7 +125,7 @@ func TestListStaleUpsert(t *testing.T) {
 
 	// 1. Test Object Upsert
 	obj := &Object{
-		ID:          uuid.NewString(),
+		ID:          uuid.New().String(),
 		BucketName:  b.Name,
 		Key:         "upsert-key",
 		Size:        100,
@@ -141,7 +140,7 @@ func TestListStaleUpsert(t *testing.T) {
 
 	obj.Size = 200
 	obj.ETag = "v2"
-	obj.ID = uuid.NewString()
+	obj.ID = uuid.New().String()
 	obj.CreatedAt = obj.CreatedAt.Add(time.Hour)
 	if err := objRepo.Create(ctx, obj); err != nil {
 		t.Fatalf("obj create v2 (upsert): %v", err)
@@ -160,7 +159,7 @@ func TestListStaleUpsert(t *testing.T) {
 
 	// 2. Test List Stale
 	staleUpload := &MultipartUpload{
-		ID:         uuid.NewString(),
+		ID:         uuid.New().String(),
 		BucketName: b.Name,
 		Key:        "stale-key",
 		CreatedAt:  time.Now().UTC().Add(-48 * time.Hour).Truncate(time.Second),
@@ -170,7 +169,7 @@ func TestListStaleUpsert(t *testing.T) {
 	}
 
 	recentUpload := &MultipartUpload{
-		ID:         uuid.NewString(),
+		ID:         uuid.New().String(),
 		BucketName: b.Name,
 		Key:        "recent-key",
 		CreatedAt:  time.Now().UTC().Truncate(time.Second),

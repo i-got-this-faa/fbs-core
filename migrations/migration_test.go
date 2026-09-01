@@ -80,7 +80,7 @@ func TestRunV2_ExistingUsers(t *testing.T) {
 	}
 
 	// Insert multiple pre-F5 users
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		_, err := db.Exec(
 			`INSERT INTO users (id, display_name, access_key_id, secret_hash, role) VALUES (?, ?, ?, ?, ?)`,
 			fmt.Sprintf("user-%d", i),

@@ -16,6 +16,7 @@ import (
 	"github.com/i-got-this-faa/fbs/internal/auth"
 	"github.com/i-got-this-faa/fbs/internal/config"
 	httpapi "github.com/i-got-this-faa/fbs/internal/http"
+	appmiddleware "github.com/i-got-this-faa/fbs/internal/http/middleware"
 	"github.com/i-got-this-faa/fbs/internal/management"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
 	"github.com/i-got-this-faa/fbs/internal/publicread"
@@ -23,7 +24,6 @@ import (
 	"github.com/i-got-this-faa/fbs/internal/server"
 	"github.com/i-got-this-faa/fbs/internal/setup"
 	"github.com/i-got-this-faa/fbs/internal/storage"
-	appmiddleware "github.com/i-got-this-faa/fbs/internal/http/middleware"
 )
 
 func main() {

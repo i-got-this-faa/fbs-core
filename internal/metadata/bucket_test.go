@@ -6,8 +6,7 @@ import (
 	"errors"
 	"testing"
 	"time"
-
-	"github.com/google/uuid"
+	"uuid"
 )
 
 // createBucketsTable is the DDL for the buckets table used in bucket tests.
@@ -53,7 +52,7 @@ func insertTestUser(t *testing.T, db *sql.DB) string {
 // newTestBucket returns a Bucket with sensible defaults for testing.
 func newTestBucket(ownerID string) *Bucket {
 	return &Bucket{
-		Name:      "test-bucket-" + uuid.NewString()[:8],
+		Name:      "test-bucket-" + uuid.New().String()[:8],
 		OwnerID:   ownerID,
 		CreatedAt: time.Now().UTC().Truncate(time.Second),
 	}

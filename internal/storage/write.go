@@ -6,8 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-
-	"github.com/google/uuid"
+	"uuid"
 )
 
 func (e *engine) Write(ctx context.Context, bucketName, key string, r io.Reader) (storagePath string, size int64, err error) {
@@ -22,13 +21,13 @@ func (e *engine) Write(ctx context.Context, bucketName, key string, r io.Reader)
 	if _, _, err := e.resolveKeyPath(bucketName, key); err != nil {
 		return "", 0, err
 	}
-	storagePath = filepath.Join(bucketName, uuid.NewString())
+	storagePath = filepath.Join(bucketName, uuid.New().String())
 	fullPath := filepath.Clean(filepath.Join(e.dataDir, storagePath))
 	if !isWithinBase(e.dataDir, fullPath) {
 		return "", 0, ErrPathTraversal
 	}
 
-	tempName := uuid.NewString() + ".tmp"
+	tempName := uuid.New().String() + ".tmp"
 	tempPath := filepath.Join(e.tmpDir, tempName)
 	tempFile, err := os.Create(tempPath)
 	if err != nil {
@@ -79,7 +78,7 @@ func (e *engine) WritePart(ctx context.Context, uploadID string, partNumber int,
 	}
 
 	partName := fmt.Sprintf("%d", partNumber)
-	tempName := partName + ".tmp-" + uuid.NewString()
+	tempName := partName + ".tmp-" + uuid.New().String()
 	tempPath := filepath.Join(partDir, tempName)
 
 	tempFile, err := os.Create(tempPath)
@@ -131,14 +130,14 @@ func (e *engine) AssembleParts(ctx context.Context, bucketName, key string, part
 	// so an existing object file is not overwritten before metadata commit.
 	// Using a UUID filename (independent of the key) avoids exceeding filesystem
 	// name limits and prevents races. Metadata is the commit point.
-	objName := uuid.NewString()
+	objName := uuid.New().String()
 	storagePath = filepath.Join(bucketName, objName)
 	fullPath := filepath.Join(e.dataDir, storagePath)
 	if !isWithinBase(e.dataDir, fullPath) {
 		return "", 0, ErrPathTraversal
 	}
 
-	tempName := uuid.NewString() + ".tmp"
+	tempName := uuid.New().String() + ".tmp"
 	tempPath := filepath.Join(e.tmpDir, tempName)
 	tempFile, err := os.Create(tempPath)
 	if err != nil {

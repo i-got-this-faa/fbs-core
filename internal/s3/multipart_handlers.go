@@ -250,17 +250,17 @@ func (h *ObjectHandlers) UploadPart(w http.ResponseWriter, r *http.Request) {
 
 	cksums := pipeline.Checksums()
 	part := &metadata.MultipartPart{
-		UploadID:         uploadID,
-		PartNumber:       partNumber,
-		Size:             size,
-		ETag:             pipeline.ETag(),
-		StoragePath:      storagePath,
-		CreatedAt:        h.now(),
-		ChecksumCRC32:    cksums["x-amz-checksum-crc32"],
-		ChecksumCRC32C:   cksums["x-amz-checksum-crc32c"],
+		UploadID:          uploadID,
+		PartNumber:        partNumber,
+		Size:              size,
+		ETag:              pipeline.ETag(),
+		StoragePath:       storagePath,
+		CreatedAt:         h.now(),
+		ChecksumCRC32:     cksums["x-amz-checksum-crc32"],
+		ChecksumCRC32C:    cksums["x-amz-checksum-crc32c"],
 		ChecksumCRC64NVME: cksums["x-amz-checksum-crc64nvme"],
-		ChecksumSHA1:     cksums["x-amz-checksum-sha1"],
-		ChecksumSHA256:   cksums["x-amz-checksum-sha256"],
+		ChecksumSHA1:      cksums["x-amz-checksum-sha1"],
+		ChecksumSHA256:    cksums["x-amz-checksum-sha256"],
 	}
 	oldStoragePath, err := h.MultipartUploads.AddPart(r.Context(), part)
 	if err != nil {
@@ -473,7 +473,6 @@ func (h *ObjectHandlers) CompleteMultipartUpload(w http.ResponseWriter, r *http.
 		WriteS3Error(w, r, http.StatusNotFound, codeNoSuchUpload, messageNoSuchUpload)
 		return
 	}
-
 
 	claimed := false
 	completed := false
@@ -772,7 +771,6 @@ func (h *ObjectHandlers) AbortMultipartUpload(w http.ResponseWriter, r *http.Req
 	cancel()
 	w.WriteHeader(http.StatusNoContent)
 }
-
 
 // UploadPartCopy handles PUT /{bucket}/{key}?partNumber={n}&uploadId={id} with x-amz-copy-source.
 func (h *ObjectHandlers) UploadPartCopy(w http.ResponseWriter, r *http.Request) {

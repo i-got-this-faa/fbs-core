@@ -14,9 +14,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"uuid"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"github.com/i-got-this-faa/fbs/internal/auth"
 	"github.com/i-got-this-faa/fbs/internal/config"
 	httpapi "github.com/i-got-this-faa/fbs/internal/http"
@@ -653,12 +653,12 @@ func TestStaleMultipartCleanup(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
-	ownerID := uuid.NewString()
+	ownerID := uuid.New().String()
 	userRepo := metadata.NewUserRepository(db)
 	if err := userRepo.Create(context.Background(), &metadata.User{
 		ID:          ownerID,
 		DisplayName: "Test",
-		AccessKeyID: "ak-" + uuid.NewString()[:8],
+		AccessKeyID: "ak-" + uuid.New().String()[:8],
 		SecretHash:  "hash",
 		Role:        "admin",
 		IsActive:    true,
@@ -688,7 +688,7 @@ func TestStaleMultipartCleanup(t *testing.T) {
 
 	// Create a stale upload.
 	staleUpload := &metadata.MultipartUpload{
-		ID:         uuid.NewString(),
+		ID:         uuid.New().String(),
 		BucketName: bucketName,
 		Key:        "stale-key",
 		CreatedAt:  time.Now().UTC().Add(-48 * time.Hour),
@@ -705,7 +705,7 @@ func TestStaleMultipartCleanup(t *testing.T) {
 
 	// Create a recent upload.
 	recentUpload := &metadata.MultipartUpload{
-		ID:         uuid.NewString(),
+		ID:         uuid.New().String(),
 		BucketName: bucketName,
 		Key:        "recent-key",
 		CreatedAt:  time.Now().UTC(),

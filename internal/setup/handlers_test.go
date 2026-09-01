@@ -165,24 +165,23 @@ func TestBootstrapRejectsNonLoopback(t *testing.T) {
 
 func TestConcurrentBootstrapCreatesOneAdmin(t *testing.T) {
 	router, repo := newSetupTestEnv(t)
-	server := httptest.NewServer(router)
-	defer server.Close()
+	server := httptest.NewTestServer(t, router)
+	server.Start()
+	client := server.Client()
 
 	const requests = 12
 	var wg sync.WaitGroup
 	statusCodes := make(chan int, requests)
-	for i := 0; i < requests; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			resp, err := http.Post(server.URL+"/api/setup/bootstrap", "application/json", bytes.NewBufferString(`{}`))
+	for range requests {
+		wg.Go(func() {
+			resp, err := client.Post(server.URL+"/api/setup/bootstrap", "application/json", bytes.NewBufferString(`{}`))
 			if err != nil {
 				t.Errorf("post bootstrap: %v", err)
 				return
 			}
 			defer resp.Body.Close()
 			statusCodes <- resp.StatusCode
-		}()
+		})
 	}
 	wg.Wait()
 	close(statusCodes)

@@ -168,7 +168,7 @@ func validateBucketName(name string) error {
 		return errors.New("bucket name must not be an ip address")
 	}
 
-	for i := 0; i < len(name); i++ {
+	for i := range len(name) {
 		char := name[i]
 		switch {
 		case char >= 'a' && char <= 'z':

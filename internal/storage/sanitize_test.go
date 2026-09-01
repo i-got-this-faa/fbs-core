@@ -1,9 +1,11 @@
 package storage
+
 import (
 	"errors"
 	"path/filepath"
 	"testing"
 )
+
 func TestValidateKey_ValidKeys(t *testing.T) {
 	t.Parallel()
 	validKeys := []string{
@@ -13,7 +15,6 @@ func TestValidateKey_ValidKeys(t *testing.T) {
 		"photos/2024/image.jpg",
 	}
 	for _, key := range validKeys {
-		key := key
 		t.Run(key, func(t *testing.T) {
 			t.Parallel()
 			if err := ValidateKey(key); err != nil {
@@ -41,7 +42,6 @@ func TestValidateKey_RejectsInvalidKeys(t *testing.T) {
 		{name: "carriage return", key: "bad\rkey", want: ErrInvalidKey},
 	}
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			err := ValidateKey(tc.key)

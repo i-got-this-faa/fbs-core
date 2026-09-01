@@ -6,8 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
-
-	"github.com/google/uuid"
+	"uuid"
 )
 
 func TestManagementRepositoryMetrics(t *testing.T) {
@@ -198,9 +197,9 @@ func seedManagementRepositoryData(t *testing.T, ctx context.Context, db *sql.DB)
 	}
 
 	objects := []*Object{
-		{ID: uuid.NewString(), BucketName: "photos", Key: "a.jpg", Size: 10, ETag: "etag-a", ContentType: "image/jpeg", StoragePath: "photos/a.jpg", CreatedAt: now, UpdatedAt: now},
-		{ID: uuid.NewString(), BucketName: "photos", Key: "b.jpg", Size: 20, ETag: "etag-b", ContentType: "image/jpeg", StoragePath: "photos/b.jpg", CreatedAt: now, UpdatedAt: now},
-		{ID: uuid.NewString(), BucketName: "docs", Key: "c.txt", Size: 30, ETag: "etag-c", ContentType: "text/plain", StoragePath: "docs/c.txt", CreatedAt: now, UpdatedAt: now},
+		{ID: uuid.New().String(), BucketName: "photos", Key: "a.jpg", Size: 10, ETag: "etag-a", ContentType: "image/jpeg", StoragePath: "photos/a.jpg", CreatedAt: now, UpdatedAt: now},
+		{ID: uuid.New().String(), BucketName: "photos", Key: "b.jpg", Size: 20, ETag: "etag-b", ContentType: "image/jpeg", StoragePath: "photos/b.jpg", CreatedAt: now, UpdatedAt: now},
+		{ID: uuid.New().String(), BucketName: "docs", Key: "c.txt", Size: 30, ETag: "etag-c", ContentType: "text/plain", StoragePath: "docs/c.txt", CreatedAt: now, UpdatedAt: now},
 	}
 	for _, obj := range objects {
 		if err := objectRepo.Create(ctx, obj); err != nil {

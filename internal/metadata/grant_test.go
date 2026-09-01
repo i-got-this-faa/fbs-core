@@ -5,15 +5,14 @@ import (
 	"errors"
 	"testing"
 	"time"
-
-	"github.com/google/uuid"
+	"uuid"
 )
 
 func uniqueTestUser(displayName string) *User {
 	u := newTestUser()
 	u.DisplayName = displayName
-	u.AccessKeyID = "ak_" + uuid.NewString()
-	u.SigV4AccessKeyID = "fbsv4_" + uuid.NewString()
+	u.AccessKeyID = "ak_" + uuid.New().String()
+	u.SigV4AccessKeyID = "fbsv4_" + uuid.New().String()
 	return u
 }
 
@@ -45,7 +44,7 @@ func TestGrantCreateAndList(t *testing.T) {
 	grants := NewGrantRepository(db)
 	now := time.Now().UTC().Truncate(time.Second)
 	g := &Grant{
-		ID:            uuid.NewString(),
+		ID:            uuid.New().String(),
 		BucketName:    "photos",
 		GranteeUserID: grantee.ID,
 		Action:        "s3:GetObject",
@@ -111,7 +110,7 @@ func TestGrantCreateIdempotent(t *testing.T) {
 	grants := NewGrantRepository(db)
 	now := time.Now().UTC()
 	first := &Grant{
-		ID: uuid.NewString(), BucketName: "b", GranteeUserID: grantee.ID,
+		ID: uuid.New().String(), BucketName: "b", GranteeUserID: grantee.ID,
 		Action: "s3:ListBucket", IsActive: true, CreatedBy: owner.ID,
 		CreatedAt: now, UpdatedAt: now,
 	}
@@ -121,7 +120,7 @@ func TestGrantCreateIdempotent(t *testing.T) {
 	}
 
 	second := &Grant{
-		ID: uuid.NewString(), BucketName: "b", GranteeUserID: grantee.ID,
+		ID: uuid.New().String(), BucketName: "b", GranteeUserID: grantee.ID,
 		Action: "s3:ListBucket", IsActive: true, CreatedBy: owner.ID,
 		CreatedAt: now, UpdatedAt: now,
 	}
@@ -158,7 +157,7 @@ func TestGrantRejectsNonGrantableAction(t *testing.T) {
 	}
 
 	err = NewGrantRepository(db).Create(ctx, &Grant{
-		ID: uuid.NewString(), BucketName: "b", GranteeUserID: grantee.ID,
+		ID: uuid.New().String(), BucketName: "b", GranteeUserID: grantee.ID,
 		Action: "s3:DeleteBucket", IsActive: true, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
 	})
 	if !errors.Is(err, ErrInvalidGrantAction) {
@@ -192,7 +191,7 @@ func TestGrantUpdateDuplicateActiveConflict(t *testing.T) {
 	grants := NewGrantRepository(db)
 	now := time.Now().UTC()
 	inactive := &Grant{
-		ID: uuid.NewString(), BucketName: "b", GranteeUserID: grantee.ID,
+		ID: uuid.New().String(), BucketName: "b", GranteeUserID: grantee.ID,
 		Action: "s3:GetObject", KeyPrefix: "docs/", IsActive: false,
 		CreatedAt: now, UpdatedAt: now,
 	}
@@ -200,7 +199,7 @@ func TestGrantUpdateDuplicateActiveConflict(t *testing.T) {
 		t.Fatalf("create inactive: %v", err)
 	}
 	active := &Grant{
-		ID: uuid.NewString(), BucketName: "b", GranteeUserID: grantee.ID,
+		ID: uuid.New().String(), BucketName: "b", GranteeUserID: grantee.ID,
 		Action: "s3:GetObject", KeyPrefix: "docs/", IsActive: true,
 		CreatedAt: now, UpdatedAt: now,
 	}
@@ -239,7 +238,7 @@ func TestGrantCascadeOnBucketDelete(t *testing.T) {
 	}
 
 	grants := NewGrantRepository(db)
-	id := uuid.NewString()
+	id := uuid.New().String()
 	if err := grants.Create(ctx, &Grant{
 		ID: id, BucketName: "gone", GranteeUserID: grantee.ID,
 		Action: "s3:GetObject", IsActive: true,

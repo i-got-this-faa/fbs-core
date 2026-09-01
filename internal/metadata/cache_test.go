@@ -14,7 +14,7 @@ func TestCachedObjectRepositoryGetByKeyCachesDelegateLookup(t *testing.T) {
 	delegate.objects[objectCacheMapKey(object.BucketName, object.Key)] = *object
 
 	repo := NewCachedObjectRepository(delegate, NewMetadataCache(1024*1024))
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		got, err := repo.GetByKey(context.Background(), object.BucketName, object.Key)
 		if err != nil {
 			t.Fatalf("GetByKey error = %v", err)
@@ -150,7 +150,7 @@ func TestMetadataCacheDisabledPassesThrough(t *testing.T) {
 	delegate.objects[objectCacheMapKey(object.BucketName, object.Key)] = *object
 
 	repo := NewCachedObjectRepository(delegate, NewMetadataCache(0))
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		if _, err := repo.GetByKey(context.Background(), "bucket", "file.txt"); err != nil {
 			t.Fatalf("GetByKey error = %v", err)
 		}

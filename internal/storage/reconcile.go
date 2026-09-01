@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 )
 
 func (e *engine) Reconcile(ctx context.Context, knownObjects func(bucketName string) ([]string, error)) error {
@@ -158,8 +159,7 @@ func (e *engine) pruneEmptyDirs(root string) {
 		return nil
 	})
 
-	for i := len(dirs) - 1; i >= 0; i-- {
-		dir := dirs[i]
+	for _, dir := range slices.Backward(dirs) {
 		if dir == root {
 			continue
 		}

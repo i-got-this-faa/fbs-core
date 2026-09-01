@@ -413,8 +413,7 @@ func isUniqueConstraintError(err error) bool {
 	if err == nil {
 		return false
 	}
-	var se *sqlite.Error
-	if errors.As(err, &se) {
+	if se, ok := errors.AsType[*sqlite.Error](err); ok {
 		code := se.Code()
 		if code == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
 			return true

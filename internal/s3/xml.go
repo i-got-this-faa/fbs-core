@@ -105,19 +105,19 @@ type CopyPartResult struct {
 }
 
 type ListMultipartUploadsResult struct {
-	XMLName            xml.Name             `xml:"ListMultipartUploadsResult"`
-	Xmlns              string               `xml:"xmlns,attr"`
-	Bucket             string               `xml:"Bucket"`
-	KeyMarker          string               `xml:"KeyMarker,omitempty"`
-	UploadIDMarker     string               `xml:"UploadIdMarker,omitempty"`
-	NextKeyMarker      string               `xml:"NextKeyMarker,omitempty"`
-	NextUploadIDMarker string               `xml:"NextUploadIdMarker,omitempty"`
-	MaxUploads         int                  `xml:"MaxUploads"`
-	IsTruncated        bool                 `xml:"IsTruncated"`
+	XMLName            xml.Name               `xml:"ListMultipartUploadsResult"`
+	Xmlns              string                 `xml:"xmlns,attr"`
+	Bucket             string                 `xml:"Bucket"`
+	KeyMarker          string                 `xml:"KeyMarker,omitempty"`
+	UploadIDMarker     string                 `xml:"UploadIdMarker,omitempty"`
+	NextKeyMarker      string                 `xml:"NextKeyMarker,omitempty"`
+	NextUploadIDMarker string                 `xml:"NextUploadIdMarker,omitempty"`
+	MaxUploads         int                    `xml:"MaxUploads"`
+	IsTruncated        bool                   `xml:"IsTruncated"`
 	Upload             []MultipartUploadEntry `xml:"Upload,omitempty"`
-	Delimiter          string               `xml:"Delimiter,omitempty"`
-	Prefix             string               `xml:"Prefix,omitempty"`
-	CommonPrefixes     []listCommonPrefix   `xml:"CommonPrefixes,omitempty"`
+	Delimiter          string                 `xml:"Delimiter,omitempty"`
+	Prefix             string                 `xml:"Prefix,omitempty"`
+	CommonPrefixes     []listCommonPrefix     `xml:"CommonPrefixes,omitempty"`
 }
 
 type MultipartUploadEntry struct {
@@ -155,22 +155,22 @@ type ListPartsPart struct {
 	LastModified      string `xml:"LastModified"`
 	ETag              string `xml:"ETag"`
 	Size              int64  `xml:"Size"`
-	ChecksumCRC32    string `xml:"ChecksumCRC32,omitempty"`
-	ChecksumCRC32C   string `xml:"ChecksumCRC32C,omitempty"`
+	ChecksumCRC32     string `xml:"ChecksumCRC32,omitempty"`
+	ChecksumCRC32C    string `xml:"ChecksumCRC32C,omitempty"`
 	ChecksumCRC64NVME string `xml:"ChecksumCRC64NVME,omitempty"`
-	ChecksumSHA1     string `xml:"ChecksumSHA1,omitempty"`
-	ChecksumSHA256   string `xml:"ChecksumSHA256,omitempty"`
+	ChecksumSHA1      string `xml:"ChecksumSHA1,omitempty"`
+	ChecksumSHA256    string `xml:"ChecksumSHA256,omitempty"`
 }
 
 type GetObjectAttributesResult struct {
-	XMLName      xml.Name          `xml:"GetObjectAttributesResponse"`
-	Xmlns        string            `xml:"xmlns,attr"`
-	ETag         string            `xml:"ETag,omitempty"`
-	LastModified string            `xml:"LastModified,omitempty"`
-	ObjectSize   *int64            `xml:"ObjectSize,omitempty"`
-	StorageClass string            `xml:"StorageClass,omitempty"`
-	ObjectParts  *ObjectPartsInfo  `xml:"ObjectParts,omitempty"`
-	Checksum     *ObjectChecksum   `xml:"Checksum,omitempty"`
+	XMLName      xml.Name         `xml:"GetObjectAttributesResponse"`
+	Xmlns        string           `xml:"xmlns,attr"`
+	ETag         string           `xml:"ETag,omitempty"`
+	LastModified string           `xml:"LastModified,omitempty"`
+	ObjectSize   *int64           `xml:"ObjectSize,omitempty"`
+	StorageClass string           `xml:"StorageClass,omitempty"`
+	ObjectParts  *ObjectPartsInfo `xml:"ObjectParts,omitempty"`
+	Checksum     *ObjectChecksum  `xml:"Checksum,omitempty"`
 }
 
 type ObjectPartsInfo struct {
@@ -178,22 +178,22 @@ type ObjectPartsInfo struct {
 }
 
 type ObjectChecksum struct {
-	ChecksumCRC32    string `xml:"ChecksumCRC32,omitempty"`
-	ChecksumCRC32C   string `xml:"ChecksumCRC32C,omitempty"`
+	ChecksumCRC32     string `xml:"ChecksumCRC32,omitempty"`
+	ChecksumCRC32C    string `xml:"ChecksumCRC32C,omitempty"`
 	ChecksumCRC64NVME string `xml:"ChecksumCRC64NVME,omitempty"`
-	ChecksumSHA1     string `xml:"ChecksumSHA1,omitempty"`
-	ChecksumSHA256   string `xml:"ChecksumSHA256,omitempty"`
+	ChecksumSHA1      string `xml:"ChecksumSHA1,omitempty"`
+	ChecksumSHA256    string `xml:"ChecksumSHA256,omitempty"`
 }
 
 type ListVersionsResult struct {
-	XMLName       xml.Name           `xml:"ListVersionsResult"`
-	Xmlns         string             `xml:"xmlns,attr"`
-	Name          string             `xml:"Name"`
-	Prefix        string             `xml:"Prefix"`
-	KeyMarker     string             `xml:"KeyMarker"`
-	NextKeyMarker string             `xml:"NextKeyMarker,omitempty"`
-	MaxKeys       int                `xml:"MaxKeys"`
-	IsTruncated   bool               `xml:"IsTruncated"`
+	XMLName       xml.Name            `xml:"ListVersionsResult"`
+	Xmlns         string              `xml:"xmlns,attr"`
+	Name          string              `xml:"Name"`
+	Prefix        string              `xml:"Prefix"`
+	KeyMarker     string              `xml:"KeyMarker"`
+	NextKeyMarker string              `xml:"NextKeyMarker,omitempty"`
+	MaxKeys       int                 `xml:"MaxKeys"`
+	IsTruncated   bool                `xml:"IsTruncated"`
 	Version       []ListVersionsEntry `xml:"Version,omitempty"`
 }
 

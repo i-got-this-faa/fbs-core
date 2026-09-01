@@ -9,8 +9,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"time"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
 )
 
@@ -98,7 +98,7 @@ func createUserCredentials(
 
 	now := time.Now().UTC()
 	user := &metadata.User{
-		ID:               uuid.NewString(),
+		ID:               uuid.New().String(),
 		DisplayName:      displayName,
 		AccessKeyID:      issued.AccessKeyID,
 		SecretHash:       issued.SecretHash,

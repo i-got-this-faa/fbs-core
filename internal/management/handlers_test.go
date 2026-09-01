@@ -14,9 +14,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"uuid"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
 	"github.com/i-got-this-faa/fbs/internal/auth"
 	"github.com/i-got-this-faa/fbs/internal/config"
 	httpapi "github.com/i-got-this-faa/fbs/internal/http"
@@ -882,10 +882,10 @@ func seedManagementHandlerData(t *testing.T, ctx context.Context, db *sql.DB, ow
 	}
 
 	objects := []*metadata.Object{
-		{ID: uuid.NewString(), BucketName: "photos", Key: "2026/image.jpg", Size: 10, ETag: "etag-image", ContentType: "image/jpeg", StoragePath: "hidden/image", CreatedAt: now, UpdatedAt: now},
-		{ID: uuid.NewString(), BucketName: "photos", Key: "2026/raw/a.nef", Size: 20, ETag: "etag-raw-a", ContentType: "image/x-nikon-nef", StoragePath: "hidden/raw-a", CreatedAt: now, UpdatedAt: now},
-		{ID: uuid.NewString(), BucketName: "photos", Key: "2026/raw/b.nef", Size: 30, ETag: "etag-raw-b", ContentType: "image/x-nikon-nef", StoragePath: "hidden/raw-b", CreatedAt: now, UpdatedAt: now},
-		{ID: uuid.NewString(), BucketName: "docs", Key: "readme.txt", Size: 40, ETag: "etag-readme", ContentType: "text/plain", StoragePath: "hidden/readme", CreatedAt: now, UpdatedAt: now},
+		{ID: uuid.New().String(), BucketName: "photos", Key: "2026/image.jpg", Size: 10, ETag: "etag-image", ContentType: "image/jpeg", StoragePath: "hidden/image", CreatedAt: now, UpdatedAt: now},
+		{ID: uuid.New().String(), BucketName: "photos", Key: "2026/raw/a.nef", Size: 20, ETag: "etag-raw-a", ContentType: "image/x-nikon-nef", StoragePath: "hidden/raw-a", CreatedAt: now, UpdatedAt: now},
+		{ID: uuid.New().String(), BucketName: "photos", Key: "2026/raw/b.nef", Size: 30, ETag: "etag-raw-b", ContentType: "image/x-nikon-nef", StoragePath: "hidden/raw-b", CreatedAt: now, UpdatedAt: now},
+		{ID: uuid.New().String(), BucketName: "docs", Key: "readme.txt", Size: 40, ETag: "etag-readme", ContentType: "text/plain", StoragePath: "hidden/readme", CreatedAt: now, UpdatedAt: now},
 	}
 	for _, obj := range objects {
 		if err := objectRepo.Create(ctx, obj); err != nil {
@@ -904,7 +904,7 @@ func seedStoredObject(t *testing.T, env managementTestEnv, bucketName, key, body
 
 	now := time.Date(2026, 5, 8, 12, 0, 0, 0, time.UTC)
 	object := &metadata.Object{
-		ID:          uuid.NewString(),
+		ID:          uuid.New().String(),
 		BucketName:  bucketName,
 		Key:         key,
 		Size:        size,
@@ -953,7 +953,7 @@ func (e managementTestEnv) doSigV4(t *testing.T, method, path string, credential
 	return rr.Result()
 }
 
-func decodeResponse(t *testing.T, resp *http.Response, dst interface{}) {
+func decodeResponse(t *testing.T, resp *http.Response, dst any) {
 	t.Helper()
 
 	if err := json.NewDecoder(resp.Body).Decode(dst); err != nil {

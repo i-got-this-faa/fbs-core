@@ -131,7 +131,7 @@ func validateUploadID(uploadID string) error {
 
 func containsTraversalSegment(key string) bool {
 	normalized := strings.ReplaceAll(key, "\\", "/")
-	for _, part := range strings.Split(normalized, "/") {
+	for part := range strings.SplitSeq(normalized, "/") {
 		if part == ".." {
 			return true
 		}

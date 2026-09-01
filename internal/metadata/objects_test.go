@@ -6,8 +6,7 @@ import (
 	"errors"
 	"testing"
 	"time"
-
-	"github.com/google/uuid"
+	"uuid"
 )
 
 const createObjectsTable = `
@@ -48,13 +47,13 @@ func openTestDBWithObjects(t *testing.T) *sql.DB {
 
 func newTestObject(bucketName, key string) *Object {
 	return &Object{
-		ID:          uuid.NewString(),
+		ID:          uuid.New().String(),
 		BucketName:  bucketName,
 		Key:         key,
 		Size:        2048,
 		ETag:        "8843d7f92416211de9ebb963ff4ce281",
 		ContentType: "text/plain",
-		StoragePath: "data/" + uuid.NewString(),
+		StoragePath: "data/" + uuid.New().String(),
 		CreatedAt:   time.Now().UTC().Truncate(time.Second),
 		UpdatedAt:   time.Now().UTC().Truncate(time.Second),
 	}
@@ -95,7 +94,7 @@ func TestObjectUpsert(t *testing.T) {
 	}
 
 	// Change some fields and create again (should update)
-	updatedID := uuid.NewString()
+	updatedID := uuid.New().String()
 	updatedCreatedAt := obj.CreatedAt.Add(time.Hour)
 	obj.ID = updatedID
 	obj.Size = 4096

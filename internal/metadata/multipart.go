@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 )
+
 // MultipartUpload represents a row in the multipart_uploads table.
 type MultipartUpload struct {
 	ID                string
@@ -24,17 +25,17 @@ type MultipartUpload struct {
 
 // MultipartPart represents a row in the multipart_parts table.
 type MultipartPart struct {
-	UploadID         string
-	PartNumber       int
-	Size             int64
-	ETag             string
-	StoragePath      string
-	CreatedAt        time.Time
-	ChecksumCRC32    string
-	ChecksumCRC32C   string
+	UploadID          string
+	PartNumber        int
+	Size              int64
+	ETag              string
+	StoragePath       string
+	CreatedAt         time.Time
+	ChecksumCRC32     string
+	ChecksumCRC32C    string
 	ChecksumCRC64NVME string
-	ChecksumSHA1     string
-	ChecksumSHA256   string
+	ChecksumSHA1      string
+	ChecksumSHA256    string
 }
 
 // MultipartUploadRepository defines CRUD operations for multipart uploads.
@@ -115,7 +116,6 @@ func (r *sqliteMultipartUploadRepository) Create(ctx context.Context, upload *Mu
 	if upload.StatusUpdatedAt.IsZero() {
 		upload.StatusUpdatedAt = upload.CreatedAt
 	}
-
 
 	metaJSON, err := json.Marshal(upload.UserMetadata)
 	if err != nil {
@@ -487,7 +487,6 @@ func (r *sqliteMultipartUploadRepository) CompleteUpload(ctx context.Context, ob
 		metaStr = &s
 	}
 
-
 	if _, err := conn.ExecContext(ctx, createQ,
 		obj.ID, obj.BucketName, obj.Key, obj.Size, obj.ETag,
 		obj.ContentType, obj.StoragePath, now, obj.UpdatedAt.UTC(),
@@ -649,8 +648,6 @@ func scanMultipartUploadRow(rows *sql.Rows) (*MultipartUpload, error) {
 	return &u, nil
 }
 
-
-
 func scanMultipartPartRow(rows *sql.Rows) (*MultipartPart, error) {
 	var p MultipartPart
 	var createdAt string
@@ -687,7 +684,7 @@ func validMultipartUploadStatus(status string) bool {
 }
 
 // nullify returns nil for empty strings so they are stored as NULL in the database.
-func nullify(s string) interface{} {
+func nullify(s string) any {
 	if s == "" {
 		return nil
 	}
