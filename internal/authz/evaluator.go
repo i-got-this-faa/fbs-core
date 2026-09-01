@@ -9,10 +9,10 @@ import (
 
 // DecisionRequest is the input to authorization evaluation.
 type DecisionRequest struct {
-	Principal  auth.Principal
-	Action     string
-	Bucket     string
-	ObjectKey  string
+	Principal auth.Principal
+	Action    string
+	Bucket    string
+	ObjectKey string
 	// ListPrefix is the list API prefix query value. Used only for s3:ListBucket.
 	ListPrefix string
 	// BucketOwnerID is the owner of Bucket when the bucket exists.

@@ -212,9 +212,9 @@ func parseAuthorizationHeader(header string) (credential, signedHeaders, signatu
 	}
 
 	params := strings.TrimPrefix(header, sigV4Algorithm+" ")
-	parts := strings.Split(params, ",")
+	parts := strings.SplitSeq(params, ",")
 
-	for _, part := range parts {
+	for part := range parts {
 		part = strings.TrimSpace(part)
 		if part == "" {
 			continue
@@ -242,7 +242,7 @@ func parseAuthorizationHeader(header string) (credential, signedHeaders, signatu
 }
 
 func validateSignedHeaders(s string) error {
-	for _, h := range strings.Split(s, ";") {
+	for h := range strings.SplitSeq(s, ";") {
 		if h == "host" {
 			return nil
 		}
@@ -266,7 +266,7 @@ func parseCredential(credential string) (accessKeyID, date, region, service stri
 	if len(date) != 8 {
 		return "", "", "", "", fmt.Errorf("invalid date length")
 	}
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		if date[i] < '0' || date[i] > '9' {
 			return "", "", "", "", fmt.Errorf("invalid date format")
 		}
@@ -432,7 +432,7 @@ func buildCanonicalQueryString(u *url.URL, exclude map[string]bool) string {
 
 func uriEncode(s string) string {
 	spaceCount := 0
-	for i := 0; i < len(s); i++ {
+	for i := range len(s) {
 		if shouldEscape(s[i]) {
 			spaceCount++
 		}
@@ -453,7 +453,7 @@ func uriEncode(s string) string {
 	}
 
 	j := 0
-	for i := 0; i < len(s); i++ {
+	for i := range len(s) {
 		c := s[i]
 		if shouldEscape(c) {
 			t[j] = '%'
@@ -482,8 +482,8 @@ func shouldEscape(c byte) bool {
 
 func buildStringToSign(timestamp, credentialScope, canonicalRequest string) string {
 	scope := credentialScope
-	if i := strings.IndexByte(credentialScope, '/'); i >= 0 {
-		scope = credentialScope[i+1:]
+	if _, after, ok := strings.Cut(credentialScope, "/"); ok {
+		scope = after
 	}
 	hash := sha256.Sum256([]byte(canonicalRequest))
 	return strings.Join([]string{

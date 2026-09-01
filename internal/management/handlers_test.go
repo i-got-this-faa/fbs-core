@@ -953,7 +953,7 @@ func (e managementTestEnv) doSigV4(t *testing.T, method, path string, credential
 	return rr.Result()
 }
 
-func decodeResponse(t *testing.T, resp *http.Response, dst interface{}) {
+func decodeResponse(t *testing.T, resp *http.Response, dst any) {
 	t.Helper()
 
 	if err := json.NewDecoder(resp.Body).Decode(dst); err != nil {

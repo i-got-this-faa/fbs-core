@@ -684,7 +684,7 @@ func validMultipartUploadStatus(status string) bool {
 }
 
 // nullify returns nil for empty strings so they are stored as NULL in the database.
-func nullify(s string) interface{} {
+func nullify(s string) any {
 	if s == "" {
 		return nil
 	}

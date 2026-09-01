@@ -1,4 +1,5 @@
 package storage
+
 import (
 	"context"
 	"errors"
@@ -7,6 +8,7 @@ import (
 	"strings"
 	"testing"
 )
+
 func TestDeleteExisting(t *testing.T) {
 	t.Parallel()
 	eng, err := New(t.TempDir())

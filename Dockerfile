@@ -1,5 +1,5 @@
 # 1. CRITICAL: Add --platform=$BUILDPLATFORM here
-FROM --platform=$BUILDPLATFORM golang:1.27-alpine AS build
+FROM --platform=$BUILDPLATFORM golang:1.27.0-alpine AS build
 
 WORKDIR /src
 

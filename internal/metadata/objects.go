@@ -3,30 +3,30 @@ package metadata
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"encoding/json"
 	"time"
 )
 
 type Object struct {
-	ID          string
-	BucketName  string
-	Key         string
-	Size        int64
-	ETag        string
-	ContentType string
-	StoragePath string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-	IsMultipart bool
-	PartsCount  int
-	ChecksumCRC32    string
-	ChecksumCRC32C   string
+	ID                string
+	BucketName        string
+	Key               string
+	Size              int64
+	ETag              string
+	ContentType       string
+	StoragePath       string
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+	IsMultipart       bool
+	PartsCount        int
+	ChecksumCRC32     string
+	ChecksumCRC32C    string
 	ChecksumCRC64NVME string
-	ChecksumSHA1     string
-	ChecksumSHA256   string
-	UserMetadata map[string]string
+	ChecksumSHA1      string
+	ChecksumSHA256    string
+	UserMetadata      map[string]string
 }
 
 // DelimitedListEntry is one result row from ListDelimited. VirtualKey holds
@@ -240,8 +240,8 @@ LIMIT ?`
 		prefixLen, bucketName, startAfter, prefix, prefixLen, prefix, // raw CTE
 		delimiter, delimiter, prefixLen, delimiter, // v CTE virtual_key
 		delimiter, delimiter, // v CTE is_cp
-		bucketName,   // JOIN
-		maxKeys + 1,  // LIMIT
+		bucketName,  // JOIN
+		maxKeys + 1, // LIMIT
 	}
 
 	rows, err := r.db.QueryContext(ctx, q, args...)
@@ -253,12 +253,12 @@ LIMIT ?`
 	var entries []DelimitedListEntry
 	for rows.Next() {
 		var (
-			virtualKey, cursorKey              string
-			isCp                               int
-			id, bName, key, etag               sql.NullString
-			contentType, storagePath           sql.NullString
-			createdAtStr, updatedAtStr         sql.NullString
-			size                               sql.NullInt64
+			virtualKey, cursorKey      string
+			isCp                       int
+			id, bName, key, etag       sql.NullString
+			contentType, storagePath   sql.NullString
+			createdAtStr, updatedAtStr sql.NullString
+			size                       sql.NullInt64
 		)
 		if err := rows.Scan(
 			&virtualKey, &cursorKey, &isCp,
@@ -377,7 +377,6 @@ func applyScannedExtras(o *Object, createdAt, updatedAt string, metaStr sql.Null
 	return nil
 }
 
-
 func scanObjectRow(rows *sql.Rows) (*Object, error) {
 	var o Object
 	var createdAt, updatedAt string
@@ -395,5 +394,3 @@ func scanObjectRow(rows *sql.Rows) (*Object, error) {
 
 	return &o, nil
 }
-
-
