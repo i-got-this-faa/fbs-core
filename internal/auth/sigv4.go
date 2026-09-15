@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -416,12 +416,12 @@ func buildCanonicalQueryString(u *url.URL, exclude map[string]bool) string {
 		}
 		keys = append(keys, k)
 	}
-	sort.Strings(keys)
+	slices.Sort(keys)
 
 	var parts []string
 	for _, k := range keys {
 		vals := values[k]
-		sort.Strings(vals)
+		slices.Sort(vals)
 		for _, v := range vals {
 			parts = append(parts, uriEncode(k)+"="+uriEncode(v))
 		}
