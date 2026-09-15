@@ -23,6 +23,11 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Verify module hygiene
+        run: |
+          go mod tidy -diff
+          go mod verify
+
       - name: Run tests
         run: go test ./...
 

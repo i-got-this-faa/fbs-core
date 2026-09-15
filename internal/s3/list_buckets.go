@@ -3,7 +3,8 @@ package s3
 import (
 	"encoding/xml"
 	"net/http"
-	"sort"
+	"slices"
+	"strings"
 
 	"github.com/i-got-this-faa/fbs/internal/auth"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
@@ -109,11 +110,11 @@ func mergeBucketsByName(owned, granted []metadata.Bucket) []metadata.Bucket {
 	for _, b := range byName {
 		merged = append(merged, b)
 	}
-	sort.Slice(merged, func(i, j int) bool {
-		if merged[i].CreatedAt.Equal(merged[j].CreatedAt) {
-			return merged[i].Name < merged[j].Name
+	slices.SortFunc(merged, func(a, b metadata.Bucket) int {
+		if c := a.CreatedAt.Compare(b.CreatedAt); c != 0 {
+			return c
 		}
-		return merged[i].CreatedAt.Before(merged[j].CreatedAt)
+		return strings.Compare(a.Name, b.Name)
 	})
 	return merged
 }
