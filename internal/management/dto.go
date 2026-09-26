@@ -51,7 +51,8 @@ type objectDetailResponse struct {
 }
 
 type publicObjectURLRequest struct {
-	ExpiresInSeconds *int64 `json:"expires_in_seconds"`
+	ExpiresInSeconds           *int64 `json:"expires_in_seconds"`
+	ResponseContentDisposition string `json:"response_content_disposition"`
 }
 
 type publicObjectURLResponse struct {

@@ -26,8 +26,8 @@ After authentication, each data-plane operation is authorized through a fixed ac
 | Operation | Request | Notes |
 | --- | --- | --- |
 | Put object | `PUT /{bucket}/{key}` | Stores object, computes MD5 ETag, validates checksums when present. |
-| Get object | `GET /{bucket}/{key}` | Uses `http.ServeContent`; supports range and conditional behavior from the standard library. |
-| Head object | `HEAD /{bucket}/{key}` | Same metadata headers as GET without body. |
+| Get object | `GET /{bucket}/{key}` | Uses `http.ServeContent`; supports range and conditional behavior. `response-content-disposition` sets the `Content-Disposition` response header. |
+| Head object | `HEAD /{bucket}/{key}` | Same metadata headers as GET without body, including response overrides. |
 | Delete object | `DELETE /{bucket}/{key}` | Idempotent success for missing objects. |
 | Copy object | `PUT /{bucket}/{key}` with `x-amz-copy-source` | Supports copy and content-type replacement via `x-amz-metadata-directive`. |
 
@@ -38,6 +38,17 @@ Object reads return:
 - `Last-Modified`
 - `Content-Type`
 - configured `Cache-Control`
+- optional `Content-Disposition` selected with `response-content-disposition`.
+
+Object GET and HEAD responses include `X-Content-Type-Options: nosniff`. FBS preserves the stored `Content-Type`, including for binary objects. To force a download, add the optional query parameter:
+
+```http
+GET /{bucket}/archive.tar.gz?response-content-disposition=attachment%3B%20filename%3D%22archive.tar.gz%22
+```
+
+Omitting `response-content-disposition` leaves normal S3 object-read behavior unchanged. SigV4 clients must include this parameter in the signed query string.
+
+Browser scripts from configured CORS origins can read `Content-Disposition`. See [CORS configuration](./configuration.md#cors).
 
 ## Multipart Uploads
 

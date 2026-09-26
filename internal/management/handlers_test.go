@@ -678,6 +678,19 @@ func TestManagementPublicURLUsesPublicBaseURL(t *testing.T) {
 	}
 }
 
+func TestManagementPublicURLRejectsInvalidContentDisposition(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.Default()
+	cfg.PublicReadSigningSecret = "12345678901234567890123456789012"
+	env := newManagementTestEnvWithConfig(t, cfg)
+	resp := env.do(t, http.MethodPost, "/api/management/buckets/photos/objects/cdn/file.txt/public-url", env.adminToken, strings.NewReader(`{"response_content_disposition":"attachment\r\nX-Injected: true"}`))
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body=%s", resp.StatusCode, readBody(t, resp))
+	}
+}
+
 func TestManagementPublicURLOmittedTTLUsesDefault(t *testing.T) {
 	t.Parallel()
 
@@ -740,7 +753,7 @@ func TestManagementPublicURLWorksAgainstPublicRoute(t *testing.T) {
 	env := newManagementTestEnvWithConfig(t, cfg)
 	seedStoredObject(t, env, "photos", "cdn/file.txt", "cdn body")
 
-	resp := env.do(t, http.MethodPost, "/api/management/buckets/photos/objects/cdn/file.txt/public-url", env.adminToken, strings.NewReader(`{"expires_in_seconds":3600}`))
+	resp := env.do(t, http.MethodPost, "/api/management/buckets/photos/objects/cdn/file.txt/public-url", env.adminToken, strings.NewReader(`{"expires_in_seconds":3600,"response_content_disposition":"attachment; filename=\"file.txt\""}`))
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200; body=%s", resp.StatusCode, readBody(t, resp))
@@ -759,6 +772,29 @@ func TestManagementPublicURLWorksAgainstPublicRoute(t *testing.T) {
 	defer publicResp.Body.Close()
 	if publicResp.StatusCode != http.StatusOK {
 		t.Fatalf("public status = %d, want 200; body=%s", publicResp.StatusCode, readBody(t, publicResp))
+	}
+
+	if got, want := publicURL.Query().Get("response-content-disposition"), `attachment; filename="file.txt"`; got != want {
+		t.Fatalf("response-content-disposition query = %q, want %q", got, want)
+	}
+	if got, want := publicResp.Header.Get("Content-Type"), "text/plain"; got != want {
+		t.Fatalf("public Content-Type = %q, want %q", got, want)
+	}
+	if got := publicResp.Header.Get("Content-Disposition"); got != `attachment; filename="file.txt"` {
+		t.Fatalf("public Content-Disposition = %q", got)
+	}
+	if got := publicResp.Header.Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Fatalf("public X-Content-Type-Options = %q, want nosniff", got)
+	}
+
+	tamperedURL := *publicURL
+	tamperedQuery := tamperedURL.Query()
+	tamperedQuery.Set("response-content-disposition", `attachment; filename="changed.txt"`)
+	tamperedURL.RawQuery = tamperedQuery.Encode()
+	tamperedResponse := env.do(t, http.MethodGet, tamperedURL.RequestURI(), "", nil)
+	defer tamperedResponse.Body.Close()
+	if tamperedResponse.StatusCode != http.StatusForbidden {
+		t.Fatalf("tampered public read status = %d, want 403", tamperedResponse.StatusCode)
 	}
 	if string(readBody(t, publicResp)) != "cdn body" {
 		t.Fatalf("public body mismatch")

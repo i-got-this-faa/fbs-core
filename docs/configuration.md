@@ -64,7 +64,7 @@ CORS is configured globally with:
 
 - Allowed methods: `GET`, `HEAD`, `POST`, `PATCH`, `PUT`, `DELETE`, `OPTIONS`.
 - Allowed headers include `Authorization`, content headers, and common S3 SigV4 headers.
-- Exposed headers: `ETag` and `x-amz-bucket-region`.
+- Exposed headers: `ETag`, `x-amz-bucket-region`, and `Content-Disposition`.
 - Credentials are allowed.
 - Preflight max age is 300 seconds.
 

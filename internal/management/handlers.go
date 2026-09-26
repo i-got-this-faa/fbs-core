@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"mime"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -216,7 +217,7 @@ func (h *Handlers) CreatePublicObjectURL(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	ttl, ok := h.publicReadTTL(w, r)
+	request, ttl, ok := h.publicReadOptions(w, r)
 	if !ok {
 		return
 	}
@@ -234,7 +235,10 @@ func (h *Handlers) CreatePublicObjectURL(w http.ResponseWriter, r *http.Request)
 	expiresUnix := strconv.FormatInt(expiresAt.Unix(), 10)
 	query := url.Values{}
 	query.Set("expires", expiresUnix)
-	query.Set("signature", h.PublicReadSigner.SignPath(path, expiresAt))
+	if request.ResponseContentDisposition != "" {
+		query.Set("response-content-disposition", request.ResponseContentDisposition)
+	}
+	query.Set("signature", h.PublicReadSigner.SignPath(path, expiresAt, request.ResponseContentDisposition))
 
 	maxAge := int64(ttl / time.Second)
 	writeJSON(w, http.StatusOK, publicObjectURLResponse{
@@ -268,13 +272,20 @@ func publicURLObjectKey(r *http.Request) (string, bool) {
 	return key, true
 }
 
-func (h *Handlers) publicReadTTL(w http.ResponseWriter, r *http.Request) (time.Duration, bool) {
+func (h *Handlers) publicReadOptions(w http.ResponseWriter, r *http.Request) (publicObjectURLRequest, time.Duration, bool) {
 	req := publicObjectURLRequest{}
 	if r.Body != nil {
 		decoder := json.NewDecoder(r.Body)
 		if err := decoder.Decode(&req); err != nil && !errors.Is(err, io.EOF) {
 			writeError(w, http.StatusBadRequest, errorCodeInvalidRequest, "invalid JSON body")
-			return 0, false
+			return publicObjectURLRequest{}, 0, false
+		}
+	}
+
+	if req.ResponseContentDisposition != "" {
+		if _, _, err := mime.ParseMediaType(req.ResponseContentDisposition); err != nil {
+			writeError(w, http.StatusBadRequest, errorCodeInvalidRequest, "response_content_disposition is invalid")
+			return publicObjectURLRequest{}, 0, false
 		}
 	}
 
@@ -282,20 +293,20 @@ func (h *Handlers) publicReadTTL(w http.ResponseWriter, r *http.Request) (time.D
 	if req.ExpiresInSeconds != nil {
 		if *req.ExpiresInSeconds <= 0 {
 			writeError(w, http.StatusBadRequest, errorCodeInvalidRequest, "expires_in_seconds must be positive")
-			return 0, false
+			return publicObjectURLRequest{}, 0, false
 		}
 		if *req.ExpiresInSeconds > int64(h.Config.PublicReadMaxTTL/time.Second) {
 			writeError(w, http.StatusBadRequest, errorCodeInvalidRequest, "expires_in_seconds exceeds maximum TTL")
-			return 0, false
+			return publicObjectURLRequest{}, 0, false
 		}
 		ttl = time.Duration(*req.ExpiresInSeconds) * time.Second
 	}
 	if ttl <= 0 || ttl > h.Config.PublicReadMaxTTL {
 		writeError(w, http.StatusBadRequest, errorCodeInvalidRequest, "expires_in_seconds exceeds maximum TTL")
-		return 0, false
+		return publicObjectURLRequest{}, 0, false
 	}
 
-	return ttl, true
+	return req, ttl, true
 }
 
 func (h *Handlers) publicBaseURL(r *http.Request) string {

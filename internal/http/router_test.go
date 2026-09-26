@@ -79,6 +79,32 @@ func TestCORSPreflight(t *testing.T) {
 	}
 }
 
+func TestCORSExposesContentDisposition(t *testing.T) {
+	t.Parallel()
+
+	router := NewRouter(testConfig(), testLogger(), func(r chi.Router) {
+		r.Get("/download", func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Disposition", `attachment; filename="archive.tar.gz"`)
+		})
+	})
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/download", nil)
+	request.Header.Set("Origin", "https://dashboard.example.com")
+
+	router.ServeHTTP(recorder, request)
+
+	if got := recorder.Header().Get("Content-Disposition"); got != `attachment; filename="archive.tar.gz"` {
+		t.Fatalf("Content-Disposition = %q, want attachment filename", got)
+	}
+	exposedHeaders := recorder.Header().Get("Access-Control-Expose-Headers")
+	for _, header := range strings.Split(exposedHeaders, ",") {
+		if strings.EqualFold(strings.TrimSpace(header), "Content-Disposition") {
+			return
+		}
+	}
+	t.Fatalf("exposed headers = %q, want Content-Disposition", exposedHeaders)
+}
+
 func TestRouterPreservesReaderFrom(t *testing.T) {
 	t.Parallel()
 
@@ -472,9 +498,11 @@ func (f *failingUserRepo) Create(_ context.Context, _ *metadata.User) error { re
 func (f *failingUserRepo) GetByID(_ context.Context, _ string) (*metadata.User, error) {
 	return nil, nil
 }
+
 func (f *failingUserRepo) GetByAccessKeyID(_ context.Context, _ string) (*metadata.User, error) {
 	return nil, errors.New("database connection lost")
 }
+
 func (f *failingUserRepo) GetBySigV4AccessKeyID(_ context.Context, _ string) (*metadata.User, error) {
 	return nil, errors.New("database connection lost")
 }

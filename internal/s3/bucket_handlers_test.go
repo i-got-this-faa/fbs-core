@@ -808,15 +808,18 @@ func TestPresignedQueryAuthAgainstS3Routes(t *testing.T) {
 	env := newSigV4S3TestEnv(t)
 
 	for _, tc := range []struct {
-		method string
-		path   string
-		body   string
-		status int
+		method              string
+		path                string
+		body                string
+		status              int
+		expectedDisposition string
 	}{
-		{http.MethodGet, "/", "", http.StatusOK},
-		{http.MethodGet, "/" + env.bucket + "?list-type=2", "", http.StatusOK},
-		{http.MethodPut, "/" + env.bucket + "/presigned.txt", "body", http.StatusOK},
-		{http.MethodGet, "/" + env.bucket + "/presigned.txt", "", http.StatusOK},
+		{http.MethodGet, "/", "", http.StatusOK, ""},
+		{http.MethodGet, "/" + env.bucket + "?list-type=2", "", http.StatusOK, ""},
+		{http.MethodPut, "/" + env.bucket + "/presigned.txt", "body", http.StatusOK, ""},
+		{http.MethodGet, "/" + env.bucket + "/presigned.txt", "", http.StatusOK, ""},
+		{http.MethodGet, "/" + env.bucket + "/presigned.txt?response-content-disposition=attachment%3B%20filename%3D%22presigned.txt%22", "", http.StatusOK, `attachment; filename="presigned.txt"`},
+		{http.MethodHead, "/" + env.bucket + "/presigned.txt?response-content-disposition=attachment%3B%20filename%3D%22presigned.txt%22", "", http.StatusOK, `attachment; filename="presigned.txt"`},
 	} {
 		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
 		req.Host = "localhost:9000"
@@ -825,6 +828,17 @@ func TestPresignedQueryAuthAgainstS3Routes(t *testing.T) {
 		env.router.ServeHTTP(rr, req)
 		if rr.Code != tc.status {
 			t.Fatalf("%s %s status = %d, want %d; body=%s", tc.method, tc.path, rr.Code, tc.status, rr.Body.String())
+		}
+		if got := rr.Header().Get("Content-Disposition"); got != tc.expectedDisposition {
+			t.Fatalf("%s %s Content-Disposition = %q, want %q", tc.method, tc.path, got, tc.expectedDisposition)
+		}
+		if tc.expectedDisposition != "" {
+			if got := rr.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+				t.Fatalf("%s %s X-Content-Type-Options = %q, want nosniff", tc.method, tc.path, got)
+			}
+			if tc.method == http.MethodHead && rr.Body.Len() != 0 {
+				t.Fatalf("HEAD body length = %d, want 0", rr.Body.Len())
+			}
 		}
 	}
 }

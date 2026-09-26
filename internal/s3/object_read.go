@@ -3,6 +3,7 @@ package s3
 import (
 	"errors"
 	"fmt"
+	"mime"
 	"net/http"
 	"strconv"
 	"time"
@@ -37,7 +38,7 @@ func (h *ObjectHandlers) loadObjectForRead(w http.ResponseWriter, r *http.Reques
 
 type storageReadErrorMapper func(http.ResponseWriter, *http.Request, *ObjectHandlers, error, *metadata.Object)
 
-func (h *ObjectHandlers) serveObject(w http.ResponseWriter, r *http.Request, obj *metadata.Object, cacheControl string, mapReadError storageReadErrorMapper) {
+func (h *ObjectHandlers) serveObject(w http.ResponseWriter, r *http.Request, obj *metadata.Object, cacheControl, responseContentDisposition string, mapReadError storageReadErrorMapper) {
 	file, err := h.Storage.Open(r.Context(), obj.StoragePath)
 	if err != nil {
 		mapReadError(w, r, h, err, obj)
@@ -45,17 +46,21 @@ func (h *ObjectHandlers) serveObject(w http.ResponseWriter, r *http.Request, obj
 	}
 	defer file.Close()
 
-	setObjectHeaders(w, obj, cacheControl)
+	setObjectHeaders(w, obj, cacheControl, responseContentDisposition)
 	http.ServeContent(w, r, obj.Key, obj.UpdatedAt.UTC(), file)
 }
 
-func setObjectHeaders(w http.ResponseWriter, obj *metadata.Object, cacheControl string) {
+func setObjectHeaders(w http.ResponseWriter, obj *metadata.Object, cacheControl, responseContentDisposition string) {
 	w.Header().Set("ETag", quoteETag(obj.ETag))
 	w.Header().Set("Content-Length", strconv.FormatInt(obj.Size, 10))
 	w.Header().Set("Last-Modified", obj.UpdatedAt.UTC().Format(http.TimeFormat))
 	if obj.ContentType != "" {
 		w.Header().Set("Content-Type", obj.ContentType)
 	}
+	if responseContentDisposition != "" {
+		w.Header().Set("Content-Disposition", responseContentDisposition)
+	}
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	if cacheControl != "" {
 		w.Header().Set("Cache-Control", cacheControl)
 	}
@@ -70,6 +75,31 @@ func setObjectHeaders(w http.ResponseWriter, obj *metadata.Object, cacheControl 
 	}
 }
 
+const responseContentDispositionQuery = "response-content-disposition"
+
+func parseResponseContentDisposition(values []string, present bool) (string, bool) {
+	if !present {
+		return "", true
+	}
+	if len(values) != 1 || values[0] == "" {
+		return "", false
+	}
+	if _, _, err := mime.ParseMediaType(values[0]); err != nil {
+		return "", false
+	}
+	return values[0], true
+}
+
+func requestedResponseContentDisposition(w http.ResponseWriter, r *http.Request) (string, bool) {
+	values, present := r.URL.Query()[responseContentDispositionQuery]
+	disposition, ok := parseResponseContentDisposition(values, present)
+	if !ok {
+		WriteS3Error(w, r, http.StatusBadRequest, codeInvalidArgument, messageInvalidArgument)
+		return "", false
+	}
+	return disposition, true
+}
+
 func mapAuthenticatedStorageReadError(w http.ResponseWriter, r *http.Request, h *ObjectHandlers, err error, obj *metadata.Object) {
 	if errors.Is(err, storage.ErrNotFound) {
 		h.logError("object metadata exists but backing file is missing", err, obj.BucketName, obj.Key, obj.StoragePath)
@@ -82,7 +112,8 @@ func mapAuthenticatedStorageReadError(w http.ResponseWriter, r *http.Request, h 
 }
 
 func (h *ObjectHandlers) PublicReadObject(w http.ResponseWriter, r *http.Request) {
-	if !h.validatePublicReadSignature(w, r) {
+	responseContentDisposition, ok := h.validatePublicReadSignature(w, r)
+	if !ok {
 		return
 	}
 
@@ -103,24 +134,34 @@ func (h *ObjectHandlers) PublicReadObject(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	h.serveObject(w, r, obj, h.publicCacheControl(r), mapPublicStorageReadError)
+	h.serveObject(w, r, obj, h.publicCacheControl(r), responseContentDisposition, mapPublicStorageReadError)
 }
 
-func (h *ObjectHandlers) validatePublicReadSignature(w http.ResponseWriter, r *http.Request) bool {
+func (h *ObjectHandlers) validatePublicReadSignature(w http.ResponseWriter, r *http.Request) (string, bool) {
 	query := r.URL.Query()
-	if h.PublicReadSigner == nil || len(query) != 2 || len(query["expires"]) != 1 || len(query["signature"]) != 1 {
+	dispositionValues, hasDisposition := query[responseContentDispositionQuery]
+	responseContentDisposition, validDisposition := parseResponseContentDisposition(dispositionValues, hasDisposition)
+	requiredQueryValues := 2
+	if hasDisposition {
+		requiredQueryValues++
+	}
+	if h.PublicReadSigner == nil ||
+		len(query) != requiredQueryValues ||
+		len(query["expires"]) != 1 ||
+		len(query["signature"]) != 1 ||
+		!validDisposition {
 		writePublicReadError(w, http.StatusForbidden)
-		return false
+		return "", false
 	}
 
 	expires := query.Get("expires")
 	signature := query.Get("signature")
-	if err := h.PublicReadSigner.Verify(r.URL.EscapedPath(), expires, signature); err != nil {
+	if err := h.PublicReadSigner.Verify(r.URL.EscapedPath(), expires, responseContentDisposition, signature); err != nil {
 		writePublicReadError(w, http.StatusForbidden)
-		return false
+		return "", false
 	}
 
-	return true
+	return responseContentDisposition, true
 }
 
 func (h *ObjectHandlers) publicCacheControl(r *http.Request) string {

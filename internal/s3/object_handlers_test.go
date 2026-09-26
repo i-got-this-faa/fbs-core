@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -348,6 +349,76 @@ func TestGetObject(t *testing.T) {
 	}
 }
 
+func TestObjectBinaryDownloadHeadersAndHead(t *testing.T) {
+	t.Parallel()
+
+	env := newObjectTestEnv(t)
+	body := string([]byte{0x1f, 0x8b, 0x08, 0x00, 0xff})
+	objectPath := "/" + env.bucket + "/archive.tar.gz"
+	put := env.do(t, http.MethodPut, objectPath, body, map[string]string{"Content-Type": "application/gzip"})
+	if put.Code != http.StatusOK {
+		t.Fatalf("PUT status = %d, want 200; body=%s", put.Code, put.Body.String())
+	}
+
+	normal := env.do(t, http.MethodGet, objectPath, "", nil)
+	if normal.Code != http.StatusOK {
+		t.Fatalf("normal GET status = %d, want 200; body=%s", normal.Code, normal.Body.String())
+	}
+	if got := normal.Header().Get("Content-Type"); got != "application/gzip" {
+		t.Fatalf("normal GET Content-Type = %q, want application/gzip", got)
+	}
+	if got := normal.Header().Get("Content-Disposition"); got != "" {
+		t.Fatalf("normal GET Content-Disposition = %q, want empty", got)
+	}
+	if got := normal.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Fatalf("normal GET X-Content-Type-Options = %q, want nosniff", got)
+	}
+
+	disposition := `attachment; filename="archive.tar.gz"`
+	query := url.Values{}
+	query.Set(responseContentDispositionQuery, disposition)
+	downloadPath := objectPath + "?" + query.Encode()
+	for _, method := range []string{http.MethodGet, http.MethodHead} {
+		resp := env.do(t, method, downloadPath, "", nil)
+		if resp.Code != http.StatusOK {
+			t.Fatalf("%s download status = %d, want 200; body=%s", method, resp.Code, resp.Body.String())
+		}
+		if got := resp.Header().Get("Content-Type"); got != "application/gzip" {
+			t.Fatalf("%s Content-Type = %q, want application/gzip", method, got)
+		}
+		if got := resp.Header().Get("Content-Disposition"); got != disposition {
+			t.Fatalf("%s Content-Disposition = %q, want %q", method, got, disposition)
+		}
+		if got := resp.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+			t.Fatalf("%s X-Content-Type-Options = %q, want nosniff", method, got)
+		}
+		if method == http.MethodHead {
+			if resp.Body.Len() != 0 {
+				t.Fatalf("HEAD body length = %d, want 0", resp.Body.Len())
+			}
+		} else if resp.Body.String() != body {
+			t.Fatalf("GET body = %q, want binary object bytes", resp.Body.String())
+		}
+	}
+}
+
+func TestGetObjectRejectsInvalidResponseContentDisposition(t *testing.T) {
+	t.Parallel()
+
+	env := newObjectTestEnv(t)
+	env.mustPut(t, "unsafe.txt", "body")
+	query := url.Values{}
+	query.Set(responseContentDispositionQuery, "attachment\r\nX-Injected: true")
+	resp := env.do(t, http.MethodGet, "/"+env.bucket+"/unsafe.txt?"+query.Encode(), "", nil)
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400; body=%s", resp.Code, resp.Body.String())
+	}
+	assertS3ErrorCode(t, resp.Body.Bytes(), codeInvalidArgument)
+	if got := resp.Header().Get("X-Injected"); got != "" {
+		t.Fatalf("injected header = %q, want empty", got)
+	}
+}
+
 func TestGetObjectRange(t *testing.T) {
 	t.Parallel()
 
@@ -529,6 +600,13 @@ func TestPublicReadGet(t *testing.T) {
 	if got := resp.Header().Get("Cache-Control"); got != "public, max-age=3600, must-revalidate" {
 		t.Fatalf("Cache-Control = %q, want public max-age", got)
 	}
+
+	if got := resp.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Fatalf("X-Content-Type-Options = %q, want nosniff", got)
+	}
+	if got := resp.Header().Get("Content-Disposition"); got != "" {
+		t.Fatalf("Content-Disposition = %q, want empty", got)
+	}
 }
 
 func TestPublicReadHead(t *testing.T) {
@@ -546,6 +624,46 @@ func TestPublicReadHead(t *testing.T) {
 	}
 	if got := resp.Header().Get("Cache-Control"); got != "public, max-age=3600, must-revalidate" {
 		t.Fatalf("Cache-Control = %q, want public max-age", got)
+	}
+
+	if got := resp.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Fatalf("X-Content-Type-Options = %q, want nosniff", got)
+	}
+}
+
+func TestPublicReadBinaryDownloadHeaders(t *testing.T) {
+	t.Parallel()
+
+	env := newObjectTestEnv(t)
+	body := string([]byte{0x50, 0x4b, 0x03, 0x04, 0x00, 0xff})
+	put := env.do(t, http.MethodPut, "/"+env.bucket+"/archive.zip", body, map[string]string{"Content-Type": "application/zip"})
+	if put.Code != http.StatusOK {
+		t.Fatalf("PUT status = %d, want 200; body=%s", put.Code, put.Body.String())
+	}
+
+	disposition := `attachment; filename="archive.zip"`
+	url := env.publicReadURLWithDisposition("archive.zip", time.Hour, disposition)
+	for _, method := range []string{http.MethodGet, http.MethodHead} {
+		resp := env.do(t, method, url, "", nil)
+		if resp.Code != http.StatusOK {
+			t.Fatalf("%s status = %d, want 200; body=%s", method, resp.Code, resp.Body.String())
+		}
+		if got := resp.Header().Get("Content-Type"); got != "application/zip" {
+			t.Fatalf("%s Content-Type = %q, want application/zip", method, got)
+		}
+		if got := resp.Header().Get("Content-Disposition"); got != disposition {
+			t.Fatalf("%s Content-Disposition = %q, want %q", method, got, disposition)
+		}
+		if got := resp.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+			t.Fatalf("%s X-Content-Type-Options = %q, want nosniff", method, got)
+		}
+		if method == http.MethodHead {
+			if resp.Body.Len() != 0 {
+				t.Fatalf("HEAD body length = %d, want 0", resp.Body.Len())
+			}
+		} else if resp.Body.String() != body {
+			t.Fatalf("GET body = %q, want binary object bytes", resp.Body.String())
+		}
 	}
 }
 
@@ -662,10 +780,19 @@ func (e objectTestEnv) mustPut(t *testing.T, key, body string) {
 }
 
 func (e objectTestEnv) publicReadURL(key string, ttl time.Duration) string {
+	return e.publicReadURLWithDisposition(key, ttl, "")
+}
+
+func (e objectTestEnv) publicReadURLWithDisposition(key string, ttl time.Duration, responseContentDisposition string) string {
 	expiresAt := e.now.Add(ttl)
 	path := publicread.ObjectPath(e.bucket, key)
-	signature := e.signer.SignPath(path, expiresAt)
-	return path + "?expires=" + strconv.FormatInt(expiresAt.Unix(), 10) + "&signature=" + signature
+	query := url.Values{}
+	query.Set("expires", strconv.FormatInt(expiresAt.Unix(), 10))
+	if responseContentDisposition != "" {
+		query.Set(responseContentDispositionQuery, responseContentDisposition)
+	}
+	query.Set("signature", e.signer.SignPath(path, expiresAt, responseContentDisposition))
+	return path + "?" + query.Encode()
 }
 
 func (e objectTestEnv) do(t *testing.T, method, path, body string, headers map[string]string) *httptest.ResponseRecorder {

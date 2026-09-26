@@ -81,6 +81,8 @@ Generate public URLs through the Management API:
 POST /api/management/buckets/{bucket}/objects/{key}/public-url
 ```
 
+To force a download, set `response_content_disposition` when you create the URL. See [Signed Public Object URLs](./management-api.md#signed-public-object-urls) for the request field.
+
 The public read path is reserved, so `public` is not a valid bucket name.
 
 ## Reverse Proxy Notes
