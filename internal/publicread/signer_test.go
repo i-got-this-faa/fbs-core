@@ -17,17 +17,30 @@ func TestSignerVerify(t *testing.T) {
 
 	path := ObjectPath("my bucket", "folder/a+b.txt")
 	expiresAt := now.Add(time.Hour)
-	signature := signer.SignPath(path, expiresAt)
-	if err := signer.Verify(path, "1778670000", signature); err != nil {
+	signature := signer.SignPath(path, expiresAt, "")
+	if err := signer.Verify(path, "1778670000", "", signature); err != nil {
 		t.Fatalf("Verify error = %v", err)
 	}
-	if err := signer.Verify(path, "1778670000", "bad"); !errors.Is(err, ErrMalformedSignature) {
+
+	if err := signer.Verify(path, "1778670000", "", "bd8bb140b5a66dc11101501125283703450a202ead8cb46777626167a64e7b0e"); err != nil {
+		t.Fatalf("Verify legacy public URL signature error = %v", err)
+	}
+
+	disposition := `attachment; filename="archive.tar.gz"`
+	downloadSignature := signer.SignPath(path, expiresAt, disposition)
+	if err := signer.Verify(path, "1778670000", disposition, downloadSignature); err != nil {
+		t.Fatalf("Verify download disposition error = %v", err)
+	}
+	if err := signer.Verify(path, "1778670000", `attachment; filename="other.tar.gz"`, downloadSignature); !errors.Is(err, ErrInvalidSignature) {
+		t.Fatalf("Verify changed disposition error = %v, want ErrInvalidSignature", err)
+	}
+	if err := signer.Verify(path, "1778670000", "", "bad"); !errors.Is(err, ErrMalformedSignature) {
 		t.Fatalf("Verify malformed error = %v, want ErrMalformedSignature", err)
 	}
-	if err := signer.Verify(path, "1778670000", signer.SignPath("/different", expiresAt)); !errors.Is(err, ErrInvalidSignature) {
+	if err := signer.Verify(path, "1778670000", "", signer.SignPath("/different", expiresAt, "")); !errors.Is(err, ErrInvalidSignature) {
 		t.Fatalf("Verify invalid error = %v, want ErrInvalidSignature", err)
 	}
-	if err := signer.Verify(path, "1778666399", signer.SignPath(path, now.Add(-time.Second))); !errors.Is(err, ErrExpiredSignature) {
+	if err := signer.Verify(path, "1778666399", "", signer.SignPath(path, now.Add(-time.Second), "")); !errors.Is(err, ErrExpiredSignature) {
 		t.Fatalf("Verify expired error = %v, want ErrExpiredSignature", err)
 	}
 }

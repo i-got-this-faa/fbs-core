@@ -178,6 +178,7 @@ func (h *ObjectHandlers) PutObject(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusOK)
 }
+
 func (h *ObjectHandlers) GetObject(w http.ResponseWriter, r *http.Request) {
 	bucketName, key := objectRouteParams(r)
 	obj, ok := h.loadObjectForRead(w, r, bucketName, key)
@@ -189,7 +190,11 @@ func (h *ObjectHandlers) GetObject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.serveObject(w, r, obj, h.S3CacheControl, mapAuthenticatedStorageReadError)
+	responseContentDisposition, ok := requestedResponseContentDisposition(w, r)
+	if !ok {
+		return
+	}
+	h.serveObject(w, r, obj, h.S3CacheControl, responseContentDisposition, mapAuthenticatedStorageReadError)
 }
 
 func (h *ObjectHandlers) HeadObject(w http.ResponseWriter, r *http.Request) {
@@ -203,7 +208,11 @@ func (h *ObjectHandlers) HeadObject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.serveObject(w, r, obj, h.S3CacheControl, mapAuthenticatedStorageReadError)
+	responseContentDisposition, ok := requestedResponseContentDisposition(w, r)
+	if !ok {
+		return
+	}
+	h.serveObject(w, r, obj, h.S3CacheControl, responseContentDisposition, mapAuthenticatedStorageReadError)
 }
 
 // handlePartNumber handles the partNumber query parameter for GetObject/HeadObject.
@@ -242,6 +251,7 @@ func (h *ObjectHandlers) handlePartNumber(w http.ResponseWriter, r *http.Request
 	WriteS3Error(w, r, http.StatusNotImplemented, codeNotImplemented, messageNotImplemented)
 	return true
 }
+
 func (h *ObjectHandlers) GetObjectAttributes(w http.ResponseWriter, r *http.Request) {
 	bucketName, key := objectRouteParams(r)
 	obj, ok := h.loadObjectForRead(w, r, bucketName, key)

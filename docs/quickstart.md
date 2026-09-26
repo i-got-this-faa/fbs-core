@@ -207,6 +207,8 @@ curl -X POST http://127.0.0.1:9000/api/management/buckets/quickstart/objects/hel
 
 Open the returned `url` without auth before it expires.
 
+To force a browser download, add `"response_content_disposition": "attachment; filename=\"hello.txt\""` to the request body. The generated public URL signs the override. Leave the field out for the normal object response.
+
 ## Docker Compose Example
 
 ```yaml

@@ -21,3 +21,18 @@ Target behavior: fbs-core builds and runs on Go 1.27 while adopting useful langu
 - `encoding/json/v2` is not imported directly because existing `encoding/json` already receives the Go 1.27 implementation while preserving the service’s established JSON API behavior.
 - `testing/synctest` is not applied to SQLite, filesystem, or process tests because those operations are outside its deterministic bubble; the affected concurrency path uses the new test-server lifecycle and passes race checks.
 - Experimental SIMD, runtime secret erasure, ML-DSA, QUIC-specific fields, and database driver scanning APIs do not have an evidence-backed use in the current service.
+
+## Issue #32: safe download headers
+
+Target behavior: object reads preserve the stored `Content-Type`, optionally return a `Content-Disposition` override, and send `X-Content-Type-Options: nosniff`. Allowed browser origins can read the override.
+
+| Surface | Applies | Evidence | Change | Check | State |
+|---|---|---|---|---|---|
+| Entry points | applies | `internal/s3/routes.go`; `internal/s3/object_read.go` | Route S3 and signed public GET/HEAD through shared response headers | focused S3 tests; live GET/HEAD | proved |
+| Clients | applies | S3 clients; browser scripts from allowed CORS origins; management-created public URLs; no in-repo download client | Add the S3 query override and expose `Content-Disposition` to allowed browser clients | presigned S3 and CORS tests; live CORS HTTP flow | proved |
+| Providers | applies | `Storage.Open`; `internal/publicread/signer.go` | Keep one object read path and sign public response overrides | focused public-read and signer tests | proved |
+| Contracts | applies | S3 query; `response_content_disposition`; public URL signature; CORS response headers | Preserve defaults; bind public overrides to the URL signature and expose the response header | GET/HEAD tests; tampering returns 403; CORS test | proved |
+| Reverse state | does not apply | Object reads do not mutate object state | No reverse action | not applicable | closed |
+| Connection modes | applies | Bearer, SigV4 presigned, custom signed public reads, and configured CORS origins | Verify each HTTP read mode, including browser header access | full tests; live local CORS HTTP flow | proved |
+| Tests | applies | `internal/s3`, `internal/publicread`, `internal/management`, `internal/http` | Cover binary GET/HEAD, stored MIME, safe headers, invalid input, signatures, and CORS exposure | `go test ./...`; `go vet ./...` | proved |
+| Documents | applies | `docs/s3-api.md`, `docs/management-api.md`, `docs/quickstart.md`, `docs/operations.md`, `docs/configuration.md` | Explain ordinary reads, safe response headers, forced downloads, and cross-origin header access | documentation review | proved |

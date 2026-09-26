@@ -232,7 +232,8 @@ POST /api/management/buckets/{bucket}/objects/{key}/public-url
 Content-Type: application/json
 
 {
-  "expires_in_seconds": 3600
+  "expires_in_seconds": 3600,
+  "response_content_disposition": "attachment; filename=\"image.jpg\""
 }
 ```
 
@@ -240,11 +241,13 @@ This endpoint requires `FBS_PUBLIC_READ_SIGNING_SECRET` or `--public-read-signin
 
 If `expires_in_seconds` is omitted, the configured default public read TTL is used. The requested TTL must be positive and no larger than the configured max TTL.
 
+`response_content_disposition` is optional. If you omit it, FBS does not set `Content-Disposition`. Set it to a valid value such as `attachment; filename="image.jpg"` to force a download. The URL signature covers the value. Changing or adding the value later invalidates the URL.
+
 Response:
 
 ```json
 {
-  "url": "https://storage.example.com/public/photos/a.jpg?expires=...&signature=...",
+  "url": "https://storage.example.com/public/photos/a.jpg?expires=...&response-content-disposition=...&signature=...",
   "expires_at": "2026-05-17T12:00:00Z",
   "cache_control": "public, max-age=3600, must-revalidate"
 }
@@ -253,11 +256,12 @@ Response:
 Public reads are served from:
 
 ```http
-GET /public/{bucket}/{key}?expires={unix_seconds}&signature={hex_hmac}
-HEAD /public/{bucket}/{key}?expires={unix_seconds}&signature={hex_hmac}
+GET /public/{bucket}/{key}?expires={unix_seconds}&signature={hex_hmac}[&response-content-disposition={value}]
+HEAD /public/{bucket}/{key}?expires={unix_seconds}&signature={hex_hmac}[&response-content-disposition={value}]
 ```
 
-Public read URLs do not use Bearer or SigV4 auth. They require exactly the `expires` and `signature` query parameters.
+Public read URLs do not use Bearer or SigV4 auth. They require exactly one `expires` and `signature` parameter, and may include one `response-content-disposition` parameter. The signature covers that optional value.
+Public object GET and HEAD responses preserve the stored `Content-Type` and include `X-Content-Type-Options: nosniff`.
 
 ## Keys
 

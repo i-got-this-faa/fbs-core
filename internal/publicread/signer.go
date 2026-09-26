@@ -39,13 +39,13 @@ func NewSigner(secret string, now func() time.Time) (*Signer, error) {
 	return &Signer{secret: []byte(trimmed), now: now}, nil
 }
 
-func (s *Signer) SignPath(path string, expiresAt time.Time) string {
+func (s *Signer) SignPath(path string, expiresAt time.Time, responseContentDisposition string) string {
 	mac := hmac.New(sha256.New, s.secret)
-	mac.Write([]byte(canonicalString(path, expiresAt.Unix())))
+	mac.Write([]byte(canonicalString(path, expiresAt.Unix(), responseContentDisposition)))
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
-func (s *Signer) Verify(path string, expiresUnix string, signatureHex string) error {
+func (s *Signer) Verify(path string, expiresUnix, responseContentDisposition, signatureHex string) error {
 	expiresAtUnix, err := strconv.ParseInt(strings.TrimSpace(expiresUnix), 10, 64)
 	if err != nil {
 		return ErrMalformedSignature
@@ -59,7 +59,7 @@ func (s *Signer) Verify(path string, expiresUnix string, signatureHex string) er
 		return ErrMalformedSignature
 	}
 
-	wantHex := s.SignPath(path, time.Unix(expiresAtUnix, 0))
+	wantHex := s.SignPath(path, time.Unix(expiresAtUnix, 0), responseContentDisposition)
 	want, err := hex.DecodeString(wantHex)
 	if err != nil {
 		return ErrInvalidSignature
@@ -80,6 +80,10 @@ func ObjectPath(bucketName, key string) string {
 	return "/public/" + url.PathEscape(bucketName) + "/" + strings.Join(escapedKeySegments, "/")
 }
 
-func canonicalString(path string, expiresUnix int64) string {
-	return "GET\n" + path + "\n" + strconv.FormatInt(expiresUnix, 10)
+func canonicalString(path string, expiresUnix int64, responseContentDisposition string) string {
+	canonical := "GET\n" + path + "\n" + strconv.FormatInt(expiresUnix, 10)
+	if responseContentDisposition == "" {
+		return canonical
+	}
+	return canonical + "\nresponse-content-disposition=" + url.QueryEscape(responseContentDisposition)
 }
