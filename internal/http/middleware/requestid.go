@@ -4,9 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"fmt"
 	"net/http"
-	"time"
 )
 
 type requestIDKey struct{}
@@ -27,10 +25,8 @@ func S3Headers(next http.Handler) http.Handler {
 }
 
 func newRequestID() string {
+	// crypto/rand.Read never returns an error (Go 1.24+).
 	b := make([]byte, 8)
-	if _, err := rand.Read(b); err != nil || len(b) != 8 {
-		// Fallback: time-based ID when crypto/rand fails.
-		return hex.EncodeToString([]byte(fmt.Sprintf("%d", time.Now().UnixNano())))
-	}
+	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
 }

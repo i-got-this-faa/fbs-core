@@ -245,7 +245,7 @@ func TestSigV4AuthClockSkew(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Host = "localhost:9000"
 
-	SignRequestWithContext(context.Background(), req, sigv4.AccessKeyID, sigv4.SecretKey, "us-east-1", "s3", []string{"host", "x-amz-content-sha256", "x-amz-date"}, EmptyStringHash, past)
+	SignRequestAt(req, sigv4.AccessKeyID, sigv4.SecretKey, "us-east-1", "s3", []string{"host", "x-amz-content-sha256", "x-amz-date"}, EmptyStringHash, past)
 
 	_, err = auth.Authenticate(req)
 	if err != ErrInvalidCredentials {

@@ -17,6 +17,8 @@ This documentation describes the completed backend as implemented in this reposi
 - [Development](./development.md): repository layout, test strategy, implementation conventions, and the optional ceph/s3-tests harness.
 - [S3 compatibility plan](../plan/s3-compatibility.md): implemented surface vs permanent non-goals and deferred features.
 - [s3-tests marker rationale](../compat/s3-tests/markers.md): why core suite markers are dropped or kept.
+- [Security audit (2026-08-06)](./security-audit-2026-08-06.md): manual review and live exploit campaign against the HTTP surface.
+- [Surface ledger](./surface-ledger.md): per-change records of every entry point, client, contract, and test a change touched.
 
 ## Quick Start
 
