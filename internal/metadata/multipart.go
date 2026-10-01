@@ -405,101 +405,18 @@ func (r *sqliteMultipartUploadRepository) CompleteUpload(ctx context.Context, ob
 		return "", fmt.Errorf("begin immediate tx: %w", err)
 	}
 
-	var status MultipartUploadStatus
-	if err := conn.QueryRowContext(ctx,
-		`SELECT status FROM multipart_uploads WHERE id = ?`,
-		uploadID,
-	).Scan(&status); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return "", ErrMultipartUploadNotFound
-		}
-		return "", fmt.Errorf("check upload status: %w", err)
+	if err := requireCompletingUpload(ctx, conn, uploadID); err != nil {
+		return "", err
 	}
-	if status != MultipartUploadStatusCompleting {
-		return "", ErrUploadAlreadyClaimed
+	existing, err := loadObjectVersion(ctx, conn, obj.BucketName, obj.Key)
+	if err != nil {
+		return "", err
 	}
-
-	var oldStoragePath string
-	var oldETag sql.NullString
-	err = conn.QueryRowContext(ctx,
-		`SELECT storage_path, etag FROM objects WHERE bucket_name = ? AND key = ?`,
-		obj.BucketName, obj.Key,
-	).Scan(&oldStoragePath, &oldETag)
-
-	objectExists := err == nil
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return "", fmt.Errorf("select existing object: %w", err)
+	if err := checkWritePreconditions(existing, ifMatch, ifNoneMatch); err != nil {
+		return "", err
 	}
-
-	// Check preconditions inside the transaction.
-	if ifMatch != "" || ifNoneMatch != "" {
-		if !objectExists && ifMatch != "" {
-			// S3 returns NoSuchKey when If-Match is set and object doesn't exist.
-			return "", ErrObjectNotFound
-		}
-		if objectExists {
-			etag := oldETag.String
-			if ifMatch != "" && ifMatch != "*" && !etagsEqual(ifMatch, etag) {
-				return "", ErrPreconditionFailed
-			}
-			if ifNoneMatch == "*" {
-				return "", ErrPreconditionFailed
-			}
-			if ifNoneMatch != "" && ifNoneMatch != "*" && etagsEqual(ifNoneMatch, etag) {
-				return "", ErrPreconditionFailed
-			}
-		}
-	}
-
-	const createQ = `
-		INSERT INTO objects (id, bucket_name, key, size, etag, content_type, storage_path, created_at, updated_at,
-			is_multipart, parts_count, checksum_crc32, checksum_crc32c, checksum_crc64nvme, checksum_sha1, checksum_sha256, user_metadata)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,
-			?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(bucket_name, key) DO UPDATE SET
-			id = excluded.id,
-			size = excluded.size,
-			etag = excluded.etag,
-			content_type = excluded.content_type,
-			storage_path = excluded.storage_path,
-			created_at = excluded.created_at,
-			updated_at = excluded.updated_at,
-			is_multipart = excluded.is_multipart,
-			parts_count = excluded.parts_count,
-			checksum_crc32 = excluded.checksum_crc32,
-			checksum_crc32c = excluded.checksum_crc32c,
-			checksum_crc64nvme = excluded.checksum_crc64nvme,
-			checksum_sha1 = excluded.checksum_sha1,
-			checksum_sha256 = excluded.checksum_sha256,
-			user_metadata = excluded.user_metadata`
-
-	if obj.CreatedAt.IsZero() {
-		obj.CreatedAt = time.Now().UTC()
-	}
-	if obj.UpdatedAt.IsZero() {
-		obj.UpdatedAt = obj.CreatedAt
-	}
-	now := obj.CreatedAt.UTC()
-
-	var metaStr *string
-	if len(obj.UserMetadata) > 0 {
-		b, err := json.Marshal(obj.UserMetadata)
-		if err != nil {
-			return "", fmt.Errorf("marshal user metadata: %w", err)
-		}
-		s := string(b)
-		metaStr = &s
-	}
-
-	if _, err := conn.ExecContext(ctx, createQ,
-		obj.ID, obj.BucketName, obj.Key, obj.Size, obj.ETag,
-		obj.ContentType, obj.StoragePath, now, obj.UpdatedAt.UTC(),
-		obj.IsMultipart, obj.PartsCount,
-		nullify(obj.ChecksumCRC32), nullify(obj.ChecksumCRC32C), nullify(obj.ChecksumCRC64NVME),
-		nullify(obj.ChecksumSHA1), nullify(obj.ChecksumSHA256),
-		metaStr,
-	); err != nil {
-		return "", fmt.Errorf("create object: %w", err)
+	if err := upsertObject(ctx, conn, obj); err != nil {
+		return "", err
 	}
 
 	if _, err := conn.ExecContext(ctx,
@@ -513,7 +430,67 @@ func (r *sqliteMultipartUploadRepository) CompleteUpload(ctx context.Context, ob
 		return "", fmt.Errorf("commit complete upload tx: %w", err)
 	}
 	committed = true
-	return oldStoragePath, nil
+	return existing.storagePath, nil
+}
+
+// requireCompletingUpload confirms that this request's claim on the upload
+// still holds.
+func requireCompletingUpload(ctx context.Context, conn *sql.Conn, uploadID string) error {
+	var status MultipartUploadStatus
+	err := conn.QueryRowContext(ctx, `SELECT status FROM multipart_uploads WHERE id = ?`, uploadID).Scan(&status)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrMultipartUploadNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("check upload status: %w", err)
+	}
+	if status != MultipartUploadStatusCompleting {
+		return ErrUploadAlreadyClaimed
+	}
+	return nil
+}
+
+// objectVersion is the stored state of a key that a write may replace.
+type objectVersion struct {
+	exists      bool
+	storagePath string
+	etag        string
+}
+
+func loadObjectVersion(ctx context.Context, conn *sql.Conn, bucketName, key string) (objectVersion, error) {
+	var version objectVersion
+	var etag sql.NullString
+	err := conn.QueryRowContext(ctx,
+		`SELECT storage_path, etag FROM objects WHERE bucket_name = ? AND key = ?`,
+		bucketName, key,
+	).Scan(&version.storagePath, &etag)
+	if errors.Is(err, sql.ErrNoRows) {
+		return objectVersion{}, nil
+	}
+	if err != nil {
+		return objectVersion{}, fmt.Errorf("select existing object: %w", err)
+	}
+	version.exists = true
+	version.etag = etag.String
+	return version, nil
+}
+
+// checkWritePreconditions applies If-Match and If-None-Match to the object a
+// write would replace. S3 returns NoSuchKey when If-Match names a missing key.
+func checkWritePreconditions(existing objectVersion, ifMatch, ifNoneMatch string) error {
+	if !existing.exists {
+		if ifMatch != "" {
+			return ErrObjectNotFound
+		}
+		return nil
+	}
+	if ifMatch != "" && ifMatch != "*" && !etagsEqual(ifMatch, existing.etag) {
+		return ErrPreconditionFailed
+	}
+	if ifNoneMatch == "*" || (ifNoneMatch != "" && etagsEqual(ifNoneMatch, existing.etag)) {
+		return ErrPreconditionFailed
+	}
+	return nil
 }
 
 func (r *sqliteMultipartUploadRepository) ListParts(ctx context.Context, uploadID string) ([]MultipartPart, error) {

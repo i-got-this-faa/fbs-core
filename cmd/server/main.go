@@ -2,298 +2,65 @@ package main
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
+	"fmt"
 	"log/slog"
-	"math"
-	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/i-got-this-faa/fbs/internal/auth"
 	"github.com/i-got-this-faa/fbs/internal/config"
-	httpapi "github.com/i-got-this-faa/fbs/internal/http"
-	appmiddleware "github.com/i-got-this-faa/fbs/internal/http/middleware"
-	"github.com/i-got-this-faa/fbs/internal/iam"
-	"github.com/i-got-this-faa/fbs/internal/management"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
-	"github.com/i-got-this-faa/fbs/internal/publicread"
 	"github.com/i-got-this-faa/fbs/internal/s3"
-	"github.com/i-got-this-faa/fbs/internal/server"
-	"github.com/i-got-this-faa/fbs/internal/setup"
 	"github.com/i-got-this-faa/fbs/internal/storage"
 )
 
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	if err := run(logger); err != nil {
+		logger.Error("server failed", "error", err)
+		os.Exit(1)
+	}
+}
 
+// run starts the server and blocks until it stops. Returning instead of
+// exiting lets deferred cleanup, such as closing the database, always run.
+func run(logger *slog.Logger) error {
 	cfg, err := config.Load()
 	if err != nil {
-		logger.Error("failed to load config", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("load config: %w", err)
 	}
 
 	logger.Info("initializing database", "db_path", cfg.DBPath)
 	db, err := metadata.Open(cfg.DBPath)
 	if err != nil {
-		logger.Error("failed to open metadata db", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("open metadata db: %w", err)
 	}
 	defer db.Close()
 
-	storageEngine, err := storage.New(cfg.DataDir)
+	store, err := storage.New(cfg.DataDir)
 	if err != nil {
-		logger.Error("failed to initialize storage engine", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("initialize storage engine: %w", err)
 	}
-
-	rawObjectRepo := metadata.NewObjectRepository(db)
-	multipartRepo := metadata.NewMultipartUploadRepository(db)
-	if err := storageEngine.Reconcile(context.Background(), func(bucketName string) ([]string, error) {
-		return listKnownStoragePaths(context.Background(), rawObjectRepo, bucketName)
-	}); err != nil {
-		logger.Error("failed to reconcile storage engine", "error", err)
-		os.Exit(1)
+	if err := reconcileStorage(context.Background(), store, db); err != nil {
+		return err
 	}
-	if err := storageEngine.ReconcileMultipartTmp(context.Background(), func() (map[string]struct{}, error) {
-		ids, err := multipartRepo.ListAllUploadIDs(context.Background())
-		if err != nil {
-			return nil, err
-		}
-		m := make(map[string]struct{}, len(ids))
-		for _, id := range ids {
-			m[id] = struct{}{}
-		}
-		return m, nil
-	}); err != nil {
-		logger.Error("failed to reconcile multipart tmp", "error", err)
-		os.Exit(1)
-	}
-
 	if cfg.DevMode {
 		logger.Warn("dev mode enabled: authentication is bypassed, do not expose this server remotely")
 	}
 
-	userRepo := metadata.NewUserRepository(db)
-	sigv4Repo := metadata.NewSigV4UserRepository(db)
-	bootstrapRepo := metadata.NewBootstrapRepository(db)
-	authChain := newAuthChain(cfg.DevMode, userRepo, sigv4Repo)
-
-	rawBucketRepo := metadata.NewBucketRepository(db)
-	bucketRepo := rawBucketRepo
-	objectRepo := rawObjectRepo
-	if cfg.MetadataCacheSizeBytes > 0 {
-		cache := metadata.NewMetadataCache(cfg.MetadataCacheSizeBytes)
-		bucketRepo = metadata.NewCachedBucketRepository(rawBucketRepo, cache)
-		objectRepo = metadata.NewCachedObjectRepository(rawObjectRepo, cache)
-	}
-
-	var publicReadSigner *publicread.Signer
-	if strings.TrimSpace(cfg.PublicReadSigningSecret) != "" {
-		publicReadSigner, err = publicread.NewSigner(cfg.PublicReadSigningSecret, nil)
-		if err != nil {
-			logger.Error("failed to initialize public read signer", "error", err)
-			os.Exit(1)
-		}
-	}
-
-	grantRepo := metadata.NewGrantRepository(db)
-	authzEvaluator := s3.NewAuthzEvaluator(grantRepo)
-
-	managementHandlers := &management.Handlers{
-		Management:       metadata.NewManagementRepository(db),
-		Buckets:          bucketRepo,
-		Objects:          objectRepo,
-		Activity:         metadata.NewActivityRepository(db),
-		Users:            userRepo,
-		Grants:           grantRepo,
-		Storage:          storageEngine,
-		Config:           cfg,
-		PublicReadSigner: publicReadSigner,
-		Logger:           logger,
-	}
-	objectHandlers := &s3.ObjectHandlers{
-		Users:            userRepo,
-		Buckets:          bucketRepo,
-		Objects:          objectRepo,
-		Activity:         metadata.NewActivityRepository(db),
-		Grants:           grantRepo,
-		Authz:            authzEvaluator,
-		Storage:          storageEngine,
-		Logger:           logger,
-		S3CacheControl:   cfg.S3CacheControl,
-		PublicReadSigner: publicReadSigner,
-		MultipartUploads: multipartRepo,
-	}
-	setupHandlers := &setup.Handlers{
-		Bootstrap: bootstrapRepo,
-		Config:    cfg,
-	}
-
-	userCount, err := bootstrapRepo.UserCount(context.Background())
+	app, err := newApp(cfg, db, store, logger)
 	if err != nil {
-		logger.Error("failed to inspect first start setup state", "error", err)
-		os.Exit(1)
+		return err
 	}
-	if userCount == 0 {
-		logger.Info("first start setup required", "setup_url", startupSetupURL(cfg))
+	if err := logFirstStartSetup(cfg, app.bootstrap, logger); err != nil {
+		return err
 	}
 
-	cleanupCtx, cleanupCancel := context.WithCancel(context.Background())
-	defer cleanupCancel()
-	go s3.StaleMultipartCleanup(cleanupCtx, multipartRepo, storageEngine, cfg.MultipartTTL, cfg.MultipartCleanupInterval, logger)
-
-	router := httpapi.NewRouter(cfg, logger, func(r chi.Router) {
-		s3.RegisterPublicReadRoutes(r, objectHandlers)
-		setup.RegisterRoutes(r, setupHandlers)
-		r.Route("/api/management", func(managementRoutes chi.Router) {
-			managementRoutes.Use(auth.RequireAuthentication(authChain, management.WriteAuthError))
-			// Grant routes: authenticated admin or bucket owner (enforced in handlers).
-			management.RegisterGrantRoutes(managementRoutes, managementHandlers)
-			managementRoutes.Group(func(adminRoutes chi.Router) {
-				adminRoutes.Use(auth.RequireRole(iam.RoleAdmin, management.WriteAuthError))
-				management.RegisterAdminRoutes(adminRoutes, managementHandlers)
-			})
-		})
-		r.Group(func(s3Routes chi.Router) {
-			s3Routes.Use(appmiddleware.S3Headers)
-			s3Routes.Use(auth.RequireAuthentication(authChain, writeS3AuthError))
-			s3.RegisterBucketRoutes(s3Routes, objectHandlers)
-			s3.RegisterObjectReadRoutes(s3Routes, objectHandlers)
-		})
-		r.Group(func(s3Routes chi.Router) {
-			s3Routes.Use(appmiddleware.S3Headers)
-			s3Routes.Use(auth.RequireAuthentication(authChain, writeS3AuthError))
-			s3.RegisterObjectMutationRoutes(s3Routes, objectHandlers)
-		})
-		// registerExtraRoutes is a no-op unless built with -tags testendpoints,
-		// which compiles in the /_health/auth debug endpoint.
-		registerExtraRoutes(r, authChain, writeJSONAuthError)
-	})
-	srv := server.New(cfg, router)
+	cleanupCtx, cancelCleanup := context.WithCancel(context.Background())
+	defer cancelCleanup()
+	go s3.StaleMultipartCleanup(cleanupCtx, app.multipartUploads, store, cfg.MultipartTTL, cfg.MultipartCleanupInterval, logger)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- srv.ListenAndServe()
-	}()
-
-	logger.Info(
-		"starting server",
-		"http_addr", cfg.HTTPAddr,
-		"db_path", cfg.DBPath,
-		"data_dir", cfg.DataDir,
-		"public_base_url", cfg.PublicBaseURL,
-		"cors_allowed_origins", cfg.CORSAllowedOrigins,
-	)
-
-	select {
-	case err := <-errCh:
-		if err != nil {
-			logger.Error("server exited with error", "error", err)
-			os.Exit(1)
-		}
-	case <-ctx.Done():
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
-		defer cancel()
-
-		logger.Info("shutting down server")
-		if err := srv.Shutdown(shutdownCtx); err != nil {
-			logger.Error("server shutdown failed", "error", err)
-			os.Exit(1)
-		}
-
-		if err := <-errCh; err != nil {
-			logger.Error("server exited with error", "error", err)
-			os.Exit(1)
-		}
-	}
-}
-
-// newAuthChain builds the authenticator chain shared by the S3 and Management
-// APIs. The dev authenticator, when enabled, runs first so it short-circuits.
-func newAuthChain(devMode bool, users metadata.UserRepository, sigv4Users metadata.SigV4UserRepository) *auth.ChainAuthenticator {
-	var authenticators []auth.Authenticator
-	if devMode {
-		authenticators = append(authenticators, &auth.DevAuthenticator{})
-	}
-	authenticators = append(authenticators,
-		&auth.BearerAuthenticator{Repo: users},
-		&auth.SigV4Authenticator{Repo: sigv4Users},
-	)
-	return &auth.ChainAuthenticator{Authenticators: authenticators}
-}
-
-func startupSetupURL(cfg config.Config) string {
-	baseURL := strings.TrimRight(strings.TrimSpace(cfg.PublicBaseURL), "/")
-	if baseURL == "" {
-		addr := strings.TrimSpace(cfg.HTTPAddr)
-		if strings.HasPrefix(addr, ":") {
-			addr = "127.0.0.1" + addr
-		}
-		baseURL = "http://" + addr
-	}
-	return baseURL + "/api/setup/status"
-}
-
-func writeS3AuthError(w http.ResponseWriter, r *http.Request, err error) {
-	switch {
-	case errors.Is(err, auth.ErrMissingAuth):
-		w.Header().Set("WWW-Authenticate", `Bearer realm="fbs"`)
-		s3.WriteS3Error(w, r, http.StatusUnauthorized, "AccessDenied", "Access denied.")
-	case errors.Is(err, auth.ErrInactiveUser), errors.Is(err, auth.ErrForbidden):
-		s3.WriteS3Error(w, r, http.StatusForbidden, "AccessDenied", "Access denied.")
-	case errors.Is(err, auth.ErrInternal):
-		s3.WriteS3Error(w, r, http.StatusInternalServerError, "InternalError", "We encountered an internal error. Please try again.")
-	default:
-		s3.WriteS3Error(w, r, http.StatusUnauthorized, "AccessDenied", "Access denied.")
-	}
-}
-
-func writeJSONAuthError(w http.ResponseWriter, _ *http.Request, err error) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	switch {
-	case errors.Is(err, auth.ErrMissingAuth):
-		w.Header().Set("WWW-Authenticate", `Bearer realm="fbs"`)
-		w.WriteHeader(http.StatusUnauthorized)
-	case errors.Is(err, auth.ErrUnsupportedScheme):
-		w.WriteHeader(http.StatusUnauthorized)
-	case errors.Is(err, auth.ErrInactiveUser), errors.Is(err, auth.ErrForbidden):
-		w.WriteHeader(http.StatusForbidden)
-	case errors.Is(err, auth.ErrInternal):
-		w.WriteHeader(http.StatusInternalServerError)
-	default:
-		w.WriteHeader(http.StatusUnauthorized)
-	}
-	json.NewEncoder(w).Encode(map[string]string{"error": "auth failed"})
-}
-
-func listKnownStoragePaths(ctx context.Context, repo metadata.ObjectRepository, bucketName string) ([]string, error) {
-	startAfter := ""
-	var storagePaths []string
-
-	for {
-		objects, isTruncated, err := repo.List(ctx, bucketName, "", startAfter, math.MaxInt32-1)
-		if err != nil {
-			return nil, err
-		}
-		if len(objects) == 0 {
-			return storagePaths, nil
-		}
-
-		for _, object := range objects {
-			storagePaths = append(storagePaths, object.StoragePath)
-		}
-
-		if !isTruncated {
-			return storagePaths, nil
-		}
-
-		startAfter = objects[len(objects)-1].Key
-	}
+	return serve(ctx, cfg, newRouter(cfg, logger, app), logger)
 }
