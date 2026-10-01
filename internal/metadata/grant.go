@@ -319,7 +319,7 @@ func (r *sqliteGrantRepository) list(ctx context.Context, query string, args ...
 
 	var grants []Grant
 	for rows.Next() {
-		g, err := scanGrantRow(rows)
+		g, err := scanGrant(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -341,7 +341,7 @@ func validateGrantWrite(grant *Grant) error {
 	return nil
 }
 
-func scanGrant(row *sql.Row) (*Grant, error) {
+func scanGrant(row rowScanner) (*Grant, error) {
 	var g Grant
 	var isActive int
 	var createdBy, note sql.NullString
@@ -378,43 +378,6 @@ func scanGrant(row *sql.Row) (*Grant, error) {
 	g.UpdatedAt, parseErr = parseTimestamp(updatedAt)
 	if parseErr != nil {
 		return nil, parseErr
-	}
-	return &g, nil
-}
-
-func scanGrantRow(rows *sql.Rows) (*Grant, error) {
-	var g Grant
-	var isActive int
-	var createdBy, note sql.NullString
-	var createdAt, updatedAt string
-
-	err := rows.Scan(
-		&g.ID,
-		&g.BucketName,
-		&g.GranteeUserID,
-		&g.Action,
-		&g.KeyPrefix,
-		&isActive,
-		&createdBy,
-		&note,
-		&createdAt,
-		&updatedAt,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("scan grant row: %w", err)
-	}
-
-	g.IsActive = isActive != 0
-	g.CreatedBy = createdBy.String
-	g.Note = note.String
-
-	g.CreatedAt, err = parseTimestamp(createdAt)
-	if err != nil {
-		return nil, err
-	}
-	g.UpdatedAt, err = parseTimestamp(updatedAt)
-	if err != nil {
-		return nil, err
 	}
 	return &g, nil
 }

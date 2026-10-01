@@ -190,7 +190,7 @@ func (r *sqliteMultipartUploadRepository) ListStale(ctx context.Context, olderTh
 
 	var uploads []MultipartUpload
 	for rows.Next() {
-		u, err := scanMultipartUploadRow(rows)
+		u, err := scanMultipartUpload(rows)
 		if err != nil {
 			return nil, fmt.Errorf("list stale uploads scan: %w", err)
 		}
@@ -572,7 +572,7 @@ func (r *sqliteMultipartUploadRepository) ListByBucket(ctx context.Context, buck
 
 	var uploads []MultipartUpload
 	for rows.Next() {
-		u, err := scanMultipartUploadRow(rows)
+		u, err := scanMultipartUpload(rows)
 		if err != nil {
 			return nil, false, "", "", fmt.Errorf("list multipart uploads by bucket scan: %w", err)
 		}
@@ -593,7 +593,7 @@ func (r *sqliteMultipartUploadRepository) ListByBucket(ctx context.Context, buck
 	return uploads, false, "", "", nil
 }
 
-func scanMultipartUpload(row *sql.Row) (*MultipartUpload, error) {
+func scanMultipartUpload(row rowScanner) (*MultipartUpload, error) {
 	var u MultipartUpload
 	var createdAt, statusUpdatedAt string
 	var metaStr sql.NullString
@@ -606,34 +606,6 @@ func scanMultipartUpload(row *sql.Row) (*MultipartUpload, error) {
 		return nil, fmt.Errorf("scan multipart upload: %w", err)
 	}
 
-	u.CreatedAt, err = parseTimestamp(createdAt)
-	if err != nil {
-		return nil, err
-	}
-	u.StatusUpdatedAt, err = parseTimestamp(statusUpdatedAt)
-	if err != nil {
-		return nil, err
-	}
-
-	if metaStr.Valid && metaStr.String != "" {
-		if err := json.Unmarshal([]byte(metaStr.String), &u.UserMetadata); err != nil {
-			return nil, fmt.Errorf("unmarshal user metadata: %w", err)
-		}
-	}
-
-	return &u, nil
-}
-
-func scanMultipartUploadRow(rows *sql.Rows) (*MultipartUpload, error) {
-	var u MultipartUpload
-	var createdAt, statusUpdatedAt string
-	var metaStr sql.NullString
-
-	if err := rows.Scan(&u.ID, &u.BucketName, &u.Key, &u.ContentType, &u.Status, &createdAt, &statusUpdatedAt, &u.ChecksumAlgorithm, &metaStr); err != nil {
-		return nil, fmt.Errorf("scan multipart upload row: %w", err)
-	}
-
-	var err error
 	u.CreatedAt, err = parseTimestamp(createdAt)
 	if err != nil {
 		return nil, err
