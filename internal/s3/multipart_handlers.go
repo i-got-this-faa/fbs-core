@@ -887,7 +887,6 @@ func (h *ObjectHandlers) UploadPartCopy(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 		srcReader = io.LimitReader(sourceFile, end-start+1)
-		srcSize = end - start + 1
 	}
 
 	// Acquire upload lock.

@@ -119,51 +119,24 @@ CREATE INDEX idx_object_activity_bucket ON object_activity(bucket_name, created_
 		version: 4,
 		name:    "add multipart content_type",
 		run: func(tx *sql.Tx) error {
-			var count int
-			err := tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('multipart_uploads') WHERE name = 'content_type'`).Scan(&count)
-			if err != nil {
-				return err
-			}
-			if count > 0 {
-				return nil
-			}
-			_, err = tx.Exec(`ALTER TABLE multipart_uploads ADD COLUMN content_type TEXT NOT NULL DEFAULT 'application/octet-stream'`)
-			return err
+			return addColumnIfMissing(tx, "multipart_uploads", "content_type", "TEXT", "'application/octet-stream'")
 		},
 	},
 	{
 		version: 5,
 		name:    "add multipart upload status",
 		run: func(tx *sql.Tx) error {
-			var count int
-			err := tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('multipart_uploads') WHERE name = 'status'`).Scan(&count)
-			if err != nil {
-				return err
-			}
-			if count > 0 {
-				return nil
-			}
-			_, err = tx.Exec(`ALTER TABLE multipart_uploads ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`)
-			return err
+			return addColumnIfMissing(tx, "multipart_uploads", "status", "TEXT", "'active'")
 		},
 	},
 	{
 		version: 6,
 		name:    "add multipart status updated timestamp",
 		run: func(tx *sql.Tx) error {
-			var count int
-			err := tx.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('multipart_uploads') WHERE name = 'status_updated_at'`).Scan(&count)
-			if err != nil {
+			if err := addColumnIfMissing(tx, "multipart_uploads", "status_updated_at", "TIMESTAMP", ""); err != nil {
 				return err
 			}
-			if count > 0 {
-				return nil
-			}
-			_, err = tx.Exec(`ALTER TABLE multipart_uploads ADD COLUMN status_updated_at TIMESTAMP`)
-			if err != nil {
-				return err
-			}
-			_, err = tx.Exec(`UPDATE multipart_uploads SET status_updated_at = CURRENT_TIMESTAMP WHERE status_updated_at IS NULL`)
+			_, err := tx.Exec(`UPDATE multipart_uploads SET status_updated_at = CURRENT_TIMESTAMP WHERE status_updated_at IS NULL`)
 			return err
 		},
 	},
@@ -275,9 +248,6 @@ CREATE INDEX IF NOT EXISTS idx_grants_bucket
 	},
 }
 
-// addColumnIfMissing adds a column to a table if it doesn't already exist.
-// Only trusted literal strings may be passed — all arguments are interpolated
-// directly into SQL with no parameterization.
 // validSQLIdentifier matches simple SQLite identifiers: letter/digit/underscore,
 // starting with a letter. Used to guard against SQL injection in DDL helpers
 // that build statements from string concatenation.

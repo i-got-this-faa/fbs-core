@@ -554,22 +554,6 @@ func (h *Handlers) listObjects(r *http.Request, bucketName string, params object
 	return objects, commonPrefixes, isTruncated, nextCursor, nil
 }
 
-func (h *Handlers) listAllObjects(r *http.Request, bucketName string) ([]metadata.Object, error) {
-	var allObjects []metadata.Object
-	startAfter := ""
-	for {
-		objects, isTruncated, err := h.Objects.List(r.Context(), bucketName, "", startAfter, maxObjectListLimit)
-		if err != nil {
-			return nil, err
-		}
-		allObjects = append(allObjects, objects...)
-		if !isTruncated || len(objects) == 0 {
-			return allObjects, nil
-		}
-		startAfter = objects[len(objects)-1].Key
-	}
-}
-
 type createKeyInput struct {
 	displayName string
 	role        string

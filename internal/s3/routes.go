@@ -10,8 +10,6 @@ func RegisterBucketRoutes(r chi.Router, h *ObjectHandlers) {
 	r.Put("/{bucket}", h.DispatchBucketPut)
 	r.Get("/{bucket}", h.DispatchBucketGet)
 	r.Head("/{bucket}", h.HeadBucket)
-	// Multi-object delete is POST /{bucket}?delete per the S3 API (boto3/aws-cli).
-	// DELETE /{bucket}?delete is also accepted for older clients and in-repo tests.
 	r.Delete("/{bucket}", h.DispatchBucketDelete)
 }
 
