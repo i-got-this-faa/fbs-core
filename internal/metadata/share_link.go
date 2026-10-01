@@ -134,10 +134,6 @@ func (r *sqliteShareLinkRepository) Delete(ctx context.Context, code string) err
 	return nil
 }
 
-type rowScanner interface {
-	Scan(dest ...any) error
-}
-
 func scanShareLink(row rowScanner) (ShareLink, error) {
 	var link ShareLink
 	var expiresAt sql.NullString
