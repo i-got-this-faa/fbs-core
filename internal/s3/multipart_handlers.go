@@ -219,7 +219,7 @@ func (h *ObjectHandlers) UploadPart(w http.ResponseWriter, r *http.Request) {
 		WriteS3Error(w, r, http.StatusNotFound, codeNoSuchUpload, messageNoSuchUpload)
 		return
 	}
-	if fmt.Sprint(upload.Status) != "active" {
+	if upload.Status != metadata.MultipartUploadStatusActive {
 		WriteS3Error(w, r, http.StatusNotFound, codeNoSuchUpload, messageNoSuchUpload)
 		return
 	}
@@ -654,7 +654,7 @@ func (h *ObjectHandlers) CompleteMultipartUpload(w http.ResponseWriter, r *http.
 	completed = true
 
 	metadata.PutObjectInCache(h.Objects, obj)
-	h.recordActivity(r, "complete_multipart_upload", bucketName, key, size, etag)
+	h.recordActivity(r, metadata.ActivityCompleteMultipartUpload, bucketName, key, size, etag)
 
 	if oldStoragePath != "" && oldStoragePath != storagePath {
 		ctx, cancel := withCleanupTimeout()

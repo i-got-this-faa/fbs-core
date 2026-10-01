@@ -75,7 +75,7 @@ func (h *Handlers) ListBucketGrants(w http.ResponseWriter, r *http.Request) {
 
 	grants, err := h.Grants.ListByBucket(r.Context(), bucket.Name)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to list grants")
+		h.internalError(w, r, "failed to list grants", err)
 		return
 	}
 
@@ -132,7 +132,7 @@ func (h *Handlers) CreateBucketGrants(w http.ResponseWriter, r *http.Request) {
 
 	results, err := h.Grants.CreateIdempotentBatch(r.Context(), grants)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to create grant")
+		h.internalError(w, r, "failed to create grant", err)
 		return
 	}
 
@@ -140,7 +140,7 @@ func (h *Handlers) CreateBucketGrants(w http.ResponseWriter, r *http.Request) {
 	for _, result := range results {
 		created = append(created, grantDTO(result.Grant))
 		if !result.Existed {
-			h.recordActivity(r, "create_grant", bucket.Name, string(result.Grant.Action), 0, result.Grant.ID)
+			h.recordActivity(r, metadata.ActivityCreateGrant, bucket.Name, string(result.Grant.Action), 0, result.Grant.ID)
 		}
 	}
 
@@ -192,16 +192,16 @@ func (h *Handlers) PatchBucketGrant(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, errorCodeInvalidRequest, "an active grant already exists for this bucket, grantee, action, and prefix")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to update grant")
+		h.internalError(w, r, "failed to update grant", err)
 		return
 	}
 
 	updated, err := h.Grants.GetByID(r.Context(), grant.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to load updated grant")
+		h.internalError(w, r, "failed to load updated grant", err)
 		return
 	}
-	h.recordActivity(r, "update_grant", bucket.Name, string(updated.Action), 0, updated.ID)
+	h.recordActivity(r, metadata.ActivityUpdateGrant, bucket.Name, string(updated.Action), 0, updated.ID)
 	writeJSON(w, http.StatusOK, grantEnvelopeResponse{Grant: grantDTO(*updated)})
 }
 
@@ -223,10 +223,10 @@ func (h *Handlers) DeleteBucketGrant(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, errorCodeNotFound, "grant not found")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to delete grant")
+		h.internalError(w, r, "failed to delete grant", err)
 		return
 	}
-	h.recordActivity(r, "delete_grant", bucket.Name, string(grant.Action), 0, grant.ID)
+	h.recordActivity(r, metadata.ActivityDeleteGrant, bucket.Name, string(grant.Action), 0, grant.ID)
 	setNoStoreHeaders(w)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -241,7 +241,7 @@ func (h *Handlers) ListMyGrants(w http.ResponseWriter, r *http.Request) {
 
 	grants, err := h.Grants.ListByGrantee(r.Context(), principal.UserID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to list grants")
+		h.internalError(w, r, "failed to list grants", err)
 		return
 	}
 
@@ -264,13 +264,13 @@ func (h *Handlers) ListUserGrants(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, errorCodeNotFound, "user not found")
 		return
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to load user")
+		h.internalError(w, r, "failed to load user", err)
 		return
 	}
 
 	grants, err := h.Grants.ListByGrantee(r.Context(), userID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to list grants")
+		h.internalError(w, r, "failed to list grants", err)
 		return
 	}
 
@@ -306,7 +306,7 @@ func (h *Handlers) TransferBucketOwnership(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to load new owner")
+		h.internalError(w, r, "failed to load new owner", err)
 		return
 	}
 	if !newOwner.IsActive {
@@ -319,11 +319,11 @@ func (h *Handlers) TransferBucketOwnership(w http.ResponseWriter, r *http.Reques
 			writeError(w, http.StatusNotFound, errorCodeNotFound, "bucket not found")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to transfer ownership")
+		h.internalError(w, r, "failed to transfer ownership", err)
 		return
 	}
 
-	h.recordActivity(r, "transfer_bucket_ownership", bucket.Name, newOwner.ID, 0, "")
+	h.recordActivity(r, metadata.ActivityTransferBucketOwnership, bucket.Name, newOwner.ID, 0, "")
 
 	summary, err := h.Management.GetBucketSummary(r.Context(), bucket.Name)
 	if err != nil {
@@ -358,7 +358,7 @@ func (h *Handlers) loadBucketForGrantAdmin(w http.ResponseWriter, r *http.Reques
 		return nil, false
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to load bucket")
+		h.internalError(w, r, "failed to load bucket", err)
 		return nil, false
 	}
 
@@ -385,7 +385,7 @@ func (h *Handlers) loadGrantOnBucket(w http.ResponseWriter, r *http.Request, gra
 		return nil, false
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to load grant")
+		h.internalError(w, r, "failed to load grant", err)
 		return nil, false
 	}
 	if grant.BucketName != bucketName {
@@ -410,7 +410,7 @@ func (h *Handlers) resolveGrantee(w http.ResponseWriter, r *http.Request, userID
 			return nil, false
 		}
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to load grantee")
+			h.internalError(w, r, "failed to load grantee", err)
 			return nil, false
 		}
 		return user, true
@@ -421,7 +421,7 @@ func (h *Handlers) resolveGrantee(w http.ResponseWriter, r *http.Request, userID
 			return nil, false
 		}
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to load grantee")
+			h.internalError(w, r, "failed to load grantee", err)
 			return nil, false
 		}
 		return user, true

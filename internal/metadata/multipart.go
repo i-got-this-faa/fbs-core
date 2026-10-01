@@ -17,7 +17,7 @@ type MultipartUpload struct {
 	Key               string
 	ContentType       string
 	ChecksumAlgorithm string
-	Status            string
+	Status            MultipartUploadStatus
 	CreatedAt         time.Time
 	StatusUpdatedAt   time.Time
 	UserMetadata      map[string]string
@@ -62,10 +62,10 @@ type MultipartUploadRepository interface {
 	// ClaimUpload atomically checks the upload is active and sets its status.
 	// Returns ErrMultipartUploadNotFound if the upload does not exist,
 	// or ErrUploadAlreadyClaimed if it is no longer active.
-	ClaimUpload(ctx context.Context, uploadID string, status string) error
+	ClaimUpload(ctx context.Context, uploadID string, status MultipartUploadStatus) error
 	// SetUploadStatus unconditionally sets the upload status.
 	// Returns ErrMultipartUploadNotFound if the upload does not exist.
-	SetUploadStatus(ctx context.Context, uploadID string, status string) error
+	SetUploadStatus(ctx context.Context, uploadID string, status MultipartUploadStatus) error
 	// ListByBucket returns multipart uploads in a bucket, with optional filtering
 	// and pagination. maxUploads is clamped to 1–1000.
 	ListByBucket(ctx context.Context, bucketName string, prefix, keyMarker, uploadIDMarker string, maxUploads int) (uploads []MultipartUpload, isTruncated bool, nextKeyMarker string, nextUploadIDMarker string, err error)
@@ -80,11 +80,15 @@ var ErrUploadAlreadyClaimed = errors.New("multipart upload already claimed")
 // ErrPreconditionFailed is returned when a precondition check fails.
 var ErrPreconditionFailed = errors.New("precondition failed")
 
-// Multipart upload status values.
+// MultipartUploadStatus is the lifecycle state of a multipart upload. Only an
+// active upload accepts parts; completing and aborted uploads are claimed by
+// one request so that concurrent completes and aborts cannot both proceed.
+type MultipartUploadStatus string
+
 const (
-	MultipartUploadStatusActive     = "active"
-	MultipartUploadStatusCompleting = "completing"
-	MultipartUploadStatusAborted    = "aborted"
+	MultipartUploadStatusActive     MultipartUploadStatus = "active"
+	MultipartUploadStatusCompleting MultipartUploadStatus = "completing"
+	MultipartUploadStatusAborted    MultipartUploadStatus = "aborted"
 )
 
 type sqliteMultipartUploadRepository struct {
@@ -225,7 +229,7 @@ func (r *sqliteMultipartUploadRepository) ListAllUploadIDs(ctx context.Context) 
 	return ids, nil
 }
 
-func (r *sqliteMultipartUploadRepository) ClaimUpload(ctx context.Context, uploadID string, status string) error {
+func (r *sqliteMultipartUploadRepository) ClaimUpload(ctx context.Context, uploadID string, status MultipartUploadStatus) error {
 	if !validMultipartUploadStatus(status) || status == MultipartUploadStatusActive {
 		return fmt.Errorf("invalid multipart upload claim status: %s", status)
 	}
@@ -247,7 +251,7 @@ func (r *sqliteMultipartUploadRepository) ClaimUpload(ctx context.Context, uploa
 		return fmt.Errorf("begin immediate tx: %w", err)
 	}
 
-	var currentStatus string
+	var currentStatus MultipartUploadStatus
 	if err := conn.QueryRowContext(ctx,
 		`SELECT status FROM multipart_uploads WHERE id = ?`,
 		uploadID,
@@ -276,7 +280,7 @@ func (r *sqliteMultipartUploadRepository) ClaimUpload(ctx context.Context, uploa
 	return nil
 }
 
-func (r *sqliteMultipartUploadRepository) SetUploadStatus(ctx context.Context, uploadID string, status string) error {
+func (r *sqliteMultipartUploadRepository) SetUploadStatus(ctx context.Context, uploadID string, status MultipartUploadStatus) error {
 	if !validMultipartUploadStatus(status) {
 		return fmt.Errorf("invalid multipart upload status: %s", status)
 	}
@@ -318,7 +322,7 @@ func (r *sqliteMultipartUploadRepository) AddPart(ctx context.Context, part *Mul
 		return "", fmt.Errorf("begin immediate tx: %w", err)
 	}
 
-	var status string
+	var status MultipartUploadStatus
 	if err := conn.QueryRowContext(ctx,
 		`SELECT status FROM multipart_uploads WHERE id = ?`,
 		part.UploadID,
@@ -401,7 +405,7 @@ func (r *sqliteMultipartUploadRepository) CompleteUpload(ctx context.Context, ob
 		return "", fmt.Errorf("begin immediate tx: %w", err)
 	}
 
-	var status string
+	var status MultipartUploadStatus
 	if err := conn.QueryRowContext(ctx,
 		`SELECT status FROM multipart_uploads WHERE id = ?`,
 		uploadID,
@@ -674,7 +678,7 @@ func scanMultipartPartRow(rows *sql.Rows) (*MultipartPart, error) {
 	return &p, nil
 }
 
-func validMultipartUploadStatus(status string) bool {
+func validMultipartUploadStatus(status MultipartUploadStatus) bool {
 	switch status {
 	case MultipartUploadStatusActive, MultipartUploadStatusCompleting, MultipartUploadStatusAborted:
 		return true

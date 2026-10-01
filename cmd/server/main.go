@@ -113,6 +113,7 @@ func main() {
 		Storage:          storageEngine,
 		Config:           cfg,
 		PublicReadSigner: publicReadSigner,
+		Logger:           logger,
 	}
 	objectHandlers := &s3.ObjectHandlers{
 		Users:            userRepo,

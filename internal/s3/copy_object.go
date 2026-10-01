@@ -121,7 +121,7 @@ func (h *ObjectHandlers) CopyObject(w http.ResponseWriter, r *http.Request) {
 		WriteS3Error(w, r, http.StatusInternalServerError, codeInternalError, messageInternalError)
 		return
 	}
-	h.recordActivity(r, "copy_object", destinationBucket, destinationKey, size, destinationObject.ETag)
+	h.recordActivity(r, metadata.ActivityCopyObject, destinationBucket, destinationKey, size, destinationObject.ETag)
 
 	if oldDestinationObject != nil && oldDestinationObject.StoragePath != storagePath {
 		if err := h.Storage.Delete(r.Context(), oldDestinationObject.StoragePath); err != nil {

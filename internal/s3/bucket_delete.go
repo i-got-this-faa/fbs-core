@@ -75,7 +75,7 @@ func (h *ObjectHandlers) DeleteBucket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.recordActivity(r, "delete_bucket", bucketName, "", 0, "")
+	h.recordActivity(r, metadata.ActivityDeleteBucket, bucketName, "", 0, "")
 	w.WriteHeader(http.StatusNoContent)
 }
 
