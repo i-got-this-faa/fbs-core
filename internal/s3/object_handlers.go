@@ -33,6 +33,7 @@ type ObjectHandlers struct {
 	Logger           *slog.Logger
 	S3CacheControl   string
 	PublicReadSigner *publicread.Signer
+	ShareLinks       metadata.ShareLinkRepository
 	MinPartSize      int64 // zero means default 5 MiB
 
 	uploadLocksMu sync.Mutex

@@ -40,6 +40,7 @@ type Handlers struct {
 	Storage          storage.DiskEngine
 	Config           config.Config
 	PublicReadSigner *publicread.Signer
+	ShareLinks       metadata.ShareLinkRepository
 }
 
 func (h *Handlers) Metrics(w http.ResponseWriter, r *http.Request) {

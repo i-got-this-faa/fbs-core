@@ -273,6 +273,23 @@ CREATE INDEX IF NOT EXISTS idx_grants_bucket
 			return nil
 		},
 	},
+	{
+		version: 12,
+		name:    "add share links",
+		sql: `
+CREATE TABLE IF NOT EXISTS share_links (
+    code                         TEXT PRIMARY KEY,
+    bucket_name                  TEXT NOT NULL REFERENCES buckets(name) ON DELETE CASCADE,
+    object_key                   TEXT NOT NULL,
+    response_content_disposition TEXT NOT NULL DEFAULT '',
+    created_by                   TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expires_at                   TIMESTAMP,
+    created_at                   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_share_links_bucket ON share_links(bucket_name, created_at DESC);
+`,
+	},
 }
 
 // addColumnIfMissing adds a column to a table if it doesn't already exist.
