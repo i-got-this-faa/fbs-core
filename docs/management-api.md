@@ -41,7 +41,7 @@ List grants on a bucket (admin or owner):
 GET /api/management/buckets/{bucket}/grants
 ```
 
-Create grants (admin or owner). One row is created per action; duplicate active grants are idempotent:
+Create grants (admin or owner). One row is created per action. The request is atomic: either every action is stored or, on any failure, nothing changes. An action that already has an active grant with the same grantee and prefix is not duplicated; the response returns the existing grant for it:
 
 ```http
 POST /api/management/buckets/{bucket}/grants
