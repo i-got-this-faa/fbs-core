@@ -255,3 +255,43 @@ func TestRunMigration_TransactionalRollback(t *testing.T) {
 		t.Errorf("expected migration 99 to not be recorded, got err=%v", err)
 	}
 }
+
+func TestLegacyMultipartColumnsAreAddedWithDefaults(t *testing.T) {
+	t.Parallel()
+
+	db := openTestDB(t)
+	if _, err := db.Exec(`
+CREATE TABLE multipart_uploads (id TEXT PRIMARY KEY, bucket_name TEXT NOT NULL, key TEXT NOT NULL, created_at TIMESTAMP);
+INSERT INTO multipart_uploads (id, bucket_name, key) VALUES ('legacy', 'b', 'k');`); err != nil {
+		t.Fatalf("create legacy table: %v", err)
+	}
+
+	for _, m := range migrations {
+		if m.version < 4 || m.version > 6 {
+			continue
+		}
+		for range 2 { // each migration must be idempotent
+			tx, err := db.Begin()
+			if err != nil {
+				t.Fatalf("begin: %v", err)
+			}
+			if err := m.run(tx); err != nil {
+				t.Fatalf("migration %d: %v", m.version, err)
+			}
+			if err := tx.Commit(); err != nil {
+				t.Fatalf("commit: %v", err)
+			}
+		}
+	}
+
+	var contentType, status string
+	var statusUpdatedAt sql.NullString
+	err := db.QueryRow(`SELECT content_type, status, status_updated_at FROM multipart_uploads WHERE id = 'legacy'`).
+		Scan(&contentType, &status, &statusUpdatedAt)
+	if err != nil {
+		t.Fatalf("read legacy row: %v", err)
+	}
+	if contentType != "application/octet-stream" || status != "active" || !statusUpdatedAt.Valid {
+		t.Fatalf("legacy row = (%q, %q, %v), want defaults and a status timestamp", contentType, status, statusUpdatedAt)
+	}
+}

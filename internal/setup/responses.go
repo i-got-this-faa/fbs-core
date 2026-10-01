@@ -27,10 +27,6 @@ func writeError(w http.ResponseWriter, statusCode int, code, message string) {
 	})
 }
 
-func setNoStoreHeaders(w http.ResponseWriter) {
-	responses.WithNoStore(w)
-}
-
 func formatTime(t time.Time) string {
 	return t.UTC().Format(time.RFC3339)
 }
