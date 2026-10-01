@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/i-got-this-faa/fbs/internal/authz"
+	"github.com/i-got-this-faa/fbs/internal/iam"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
 )
 
@@ -47,10 +47,10 @@ func (h *ObjectHandlers) CopyObject(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Copy requires get on source and put on destination (both checks always).
-	if !h.ensureBucketAction(w, r, source.bucketName, authz.ActionGetObject, source.key, "") {
+	if !h.ensureBucketAction(w, r, source.bucketName, iam.ActionGetObject, source.key, "") {
 		return
 	}
-	if !h.ensureBucketAction(w, r, destinationBucket, authz.ActionPutObject, destinationKey, "") {
+	if !h.ensureBucketAction(w, r, destinationBucket, iam.ActionPutObject, destinationKey, "") {
 		return
 	}
 

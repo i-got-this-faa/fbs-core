@@ -17,6 +17,7 @@ import (
 	"github.com/i-got-this-faa/fbs/internal/config"
 	httpapi "github.com/i-got-this-faa/fbs/internal/http"
 	appmiddleware "github.com/i-got-this-faa/fbs/internal/http/middleware"
+	"github.com/i-got-this-faa/fbs/internal/iam"
 	"github.com/i-got-this-faa/fbs/internal/management"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
 	"github.com/i-got-this-faa/fbs/internal/publicread"
@@ -152,7 +153,7 @@ func main() {
 			// Grant routes: authenticated admin or bucket owner (enforced in handlers).
 			management.RegisterGrantRoutes(managementRoutes, managementHandlers)
 			managementRoutes.Group(func(adminRoutes chi.Router) {
-				adminRoutes.Use(auth.RequireRole("admin", management.WriteAuthError))
+				adminRoutes.Use(auth.RequireRole(iam.RoleAdmin, management.WriteAuthError))
 				management.RegisterAdminRoutes(adminRoutes, managementHandlers)
 			})
 		})

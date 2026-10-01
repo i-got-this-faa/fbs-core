@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/i-got-this-faa/fbs/internal/iam"
 )
 
 // User represents a row in the users table.
@@ -16,7 +18,7 @@ type User struct {
 	SecretHash       string
 	SigV4AccessKeyID string
 	SigV4SecretKey   string
-	Role             string
+	Role             iam.Role
 	IsActive         bool
 	CreatedAt        time.Time
 	UpdatedAt        time.Time

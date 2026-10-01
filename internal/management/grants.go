@@ -5,28 +5,29 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 	"uuid"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/i-got-this-faa/fbs/internal/auth"
-	"github.com/i-got-this-faa/fbs/internal/authz"
+	"github.com/i-got-this-faa/fbs/internal/iam"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
 	"github.com/i-got-this-faa/fbs/internal/storage"
 )
 
 type grantResponse struct {
-	ID            string `json:"id"`
-	Bucket        string `json:"bucket"`
-	GranteeUserID string `json:"grantee_user_id"`
-	Action        string `json:"action"`
-	KeyPrefix     string `json:"key_prefix"`
-	IsActive      bool   `json:"is_active"`
-	CreatedBy     string `json:"created_by,omitempty"`
-	Note          string `json:"note,omitempty"`
-	CreatedAt     string `json:"created_at"`
-	UpdatedAt     string `json:"updated_at"`
+	ID            string     `json:"id"`
+	Bucket        string     `json:"bucket"`
+	GranteeUserID string     `json:"grantee_user_id"`
+	Action        iam.Action `json:"action"`
+	KeyPrefix     string     `json:"key_prefix"`
+	IsActive      bool       `json:"is_active"`
+	CreatedBy     string     `json:"created_by,omitempty"`
+	Note          string     `json:"note,omitempty"`
+	CreatedAt     string     `json:"created_at"`
+	UpdatedAt     string     `json:"updated_at"`
 }
 
 type grantsResponse struct {
@@ -113,19 +114,9 @@ func (h *Handlers) CreateBucketGrants(w http.ResponseWriter, r *http.Request) {
 
 	principal, _ := auth.PrincipalFromContext(r.Context())
 	now := time.Now().UTC()
-	created := make([]grantResponse, 0, len(input.actions))
-
-	// Validate all actions upfront so we don't partially create grants.
+	grants := make([]metadata.Grant, 0, len(input.actions))
 	for _, action := range input.actions {
-		if !authz.IsGrantable(action) {
-			writeError(w, http.StatusBadRequest, errorCodeInvalidRequest, "invalid or non-grantable action")
-			return
-		}
-	}
-
-	var createdGrants []metadata.Grant
-	for _, action := range input.actions {
-		grant := &metadata.Grant{
+		grants = append(grants, metadata.Grant{
 			ID:            uuid.New().String(),
 			BucketName:    bucket.Name,
 			GranteeUserID: grantee.ID,
@@ -136,24 +127,20 @@ func (h *Handlers) CreateBucketGrants(w http.ResponseWriter, r *http.Request) {
 			Note:          input.note,
 			CreatedAt:     now,
 			UpdatedAt:     now,
-		}
-		result, existed, err := h.Grants.CreateIdempotent(r.Context(), grant)
-		if err != nil {
-			// Roll back any grants created so far in this batch.
-			for i := range createdGrants {
-				_ = h.Grants.Delete(r.Context(), createdGrants[i].ID)
-			}
-			if errors.Is(err, metadata.ErrInvalidGrantAction) {
-				writeError(w, http.StatusBadRequest, errorCodeInvalidRequest, "invalid or non-grantable action")
-				return
-			}
-			writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to create grant")
-			return
-		}
-		createdGrants = append(createdGrants, *result)
-		created = append(created, grantDTO(*result))
-		if !existed {
-			h.recordActivity(r, "create_grant", bucket.Name, action, 0, result.ID)
+		})
+	}
+
+	results, err := h.Grants.CreateIdempotentBatch(r.Context(), grants)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to create grant")
+		return
+	}
+
+	created := make([]grantResponse, 0, len(results))
+	for _, result := range results {
+		created = append(created, grantDTO(result.Grant))
+		if !result.Existed {
+			h.recordActivity(r, "create_grant", bucket.Name, string(result.Grant.Action), 0, result.Grant.ID)
 		}
 	}
 
@@ -214,7 +201,7 @@ func (h *Handlers) PatchBucketGrant(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to load updated grant")
 		return
 	}
-	h.recordActivity(r, "update_grant", bucket.Name, updated.Action, 0, updated.ID)
+	h.recordActivity(r, "update_grant", bucket.Name, string(updated.Action), 0, updated.ID)
 	writeJSON(w, http.StatusOK, grantEnvelopeResponse{Grant: grantDTO(*updated)})
 }
 
@@ -239,7 +226,7 @@ func (h *Handlers) DeleteBucketGrant(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to delete grant")
 		return
 	}
-	h.recordActivity(r, "delete_grant", bucket.Name, grant.Action, 0, grant.ID)
+	h.recordActivity(r, "delete_grant", bucket.Name, string(grant.Action), 0, grant.ID)
 	setNoStoreHeaders(w)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -380,7 +367,7 @@ func (h *Handlers) loadBucketForGrantAdmin(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusUnauthorized, errorCodeUnauthorized, "authentication required")
 		return nil, false
 	}
-	if principal.Role != "admin" && bucket.OwnerID != principal.UserID {
+	if principal.Role != iam.RoleAdmin && bucket.OwnerID != principal.UserID {
 		writeError(w, http.StatusForbidden, errorCodeForbidden, "admin or bucket owner required")
 		return nil, false
 	}
@@ -447,7 +434,7 @@ func (h *Handlers) resolveGrantee(w http.ResponseWriter, r *http.Request, userID
 type createGrantInput struct {
 	granteeUserID      string
 	granteeAccessKeyID string
-	actions            []string
+	actions            []iam.Action
 	keyPrefix          string
 	note               string
 }
@@ -457,7 +444,6 @@ func decodeCreateGrantRequest(w http.ResponseWriter, r *http.Request) (createGra
 		GranteeUserID      string   `json:"grantee_user_id"`
 		GranteeAccessKeyID string   `json:"grantee_access_key_id"`
 		Actions            []string `json:"actions"`
-		Action             string   `json:"action"`
 		KeyPrefix          string   `json:"key_prefix"`
 		Note               string   `json:"note"`
 	}
@@ -467,30 +453,19 @@ func decodeCreateGrantRequest(w http.ResponseWriter, r *http.Request) (createGra
 		return createGrantInput{}, false
 	}
 
-	actions := make([]string, 0, len(raw.Actions)+1)
-	seen := make(map[string]struct{})
-	for _, action := range raw.Actions {
-		action = strings.TrimSpace(action)
-		if action == "" {
+	actions := make([]iam.Action, 0, len(raw.Actions))
+	for _, value := range raw.Actions {
+		value = strings.TrimSpace(value)
+		if value == "" {
 			continue
 		}
-		if !authz.IsGrantable(action) {
-			writeError(w, http.StatusBadRequest, errorCodeInvalidRequest, "invalid or non-grantable action: "+action)
+		action, err := iam.ParseGrantableAction(value)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, errorCodeInvalidRequest, err.Error()+": "+value)
 			return createGrantInput{}, false
 		}
-		if _, ok := seen[action]; ok {
-			continue
-		}
-		seen[action] = struct{}{}
-		actions = append(actions, action)
-	}
-	if single := strings.TrimSpace(raw.Action); single != "" {
-		if !authz.IsGrantable(single) {
-			writeError(w, http.StatusBadRequest, errorCodeInvalidRequest, "invalid or non-grantable action: "+single)
-			return createGrantInput{}, false
-		}
-		if _, ok := seen[single]; !ok {
-			actions = append(actions, single)
+		if !slices.Contains(actions, action) {
+			actions = append(actions, action)
 		}
 	}
 	if len(actions) == 0 {

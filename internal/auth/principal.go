@@ -1,12 +1,16 @@
 package auth
 
-import "context"
+import (
+	"context"
+
+	"github.com/i-got-this-faa/fbs/internal/iam"
+)
 
 type Principal struct {
 	UserID      string
 	DisplayName string
 	AccessKeyID string
-	Role        string
+	Role        iam.Role
 	DevMode     bool
 	// SignedHeaders is populated for SigV4-authenticated requests.
 	SignedHeaders string

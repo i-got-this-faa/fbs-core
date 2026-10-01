@@ -11,6 +11,7 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/i-got-this-faa/fbs/internal/iam"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
 )
 
@@ -68,7 +69,7 @@ func IssueSigV4Credentials() (SigV4Credentials, error) {
 	}, nil
 }
 
-func CreateBearerToken(ctx context.Context, repo metadata.UserRepository, displayName, role string) (IssuedToken, SigV4Credentials, *metadata.User, error) {
+func CreateBearerToken(ctx context.Context, repo metadata.UserRepository, displayName string, role iam.Role) (IssuedToken, SigV4Credentials, *metadata.User, error) {
 	return createUserCredentials(ctx, repo.Create, displayName, role, "create bearer token user")
 }
 
@@ -76,14 +77,14 @@ func CreateFirstAdmin(ctx context.Context, repo metadata.BootstrapRepository, di
 	if displayName == "" {
 		displayName = "Initial Admin"
 	}
-	return createUserCredentials(ctx, repo.CreateFirstUser, displayName, "admin", "create first admin user")
+	return createUserCredentials(ctx, repo.CreateFirstUser, displayName, iam.RoleAdmin, "create first admin user")
 }
 
 func createUserCredentials(
 	ctx context.Context,
 	createUser func(context.Context, *metadata.User) error,
 	displayName string,
-	role string,
+	role iam.Role,
 	errPrefix string,
 ) (IssuedToken, SigV4Credentials, *metadata.User, error) {
 	issued, err := IssueBearerToken()
