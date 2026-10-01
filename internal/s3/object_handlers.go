@@ -13,7 +13,9 @@ import (
 	"uuid"
 
 	"github.com/go-chi/chi/v5"
+
 	"github.com/i-got-this-faa/fbs/internal/authz"
+	"github.com/i-got-this-faa/fbs/internal/iam"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
 	"github.com/i-got-this-faa/fbs/internal/publicread"
 	"github.com/i-got-this-faa/fbs/internal/storage"
@@ -96,7 +98,7 @@ func (h *ObjectHandlers) PutObject(w http.ResponseWriter, r *http.Request) {
 		WriteS3Error(w, r, http.StatusBadRequest, codeInvalidRequest, messageInvalidRequest)
 		return
 	}
-	if !h.ensureBucketAction(w, r, bucketName, authz.ActionPutObject, key, "") {
+	if !h.ensureBucketAction(w, r, bucketName, iam.ActionPutObject, key, "") {
 		return
 	}
 
@@ -320,7 +322,7 @@ func (h *ObjectHandlers) DeleteObject(w http.ResponseWriter, r *http.Request) {
 		WriteS3Error(w, r, http.StatusBadRequest, codeInvalidRequest, messageInvalidRequest)
 		return
 	}
-	if !h.ensureBucketAction(w, r, bucketName, authz.ActionDeleteObject, key, "") {
+	if !h.ensureBucketAction(w, r, bucketName, iam.ActionDeleteObject, key, "") {
 		return
 	}
 

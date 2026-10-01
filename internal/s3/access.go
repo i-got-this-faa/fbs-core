@@ -7,13 +7,14 @@ import (
 
 	"github.com/i-got-this-faa/fbs/internal/auth"
 	"github.com/i-got-this-faa/fbs/internal/authz"
+	"github.com/i-got-this-faa/fbs/internal/iam"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
 )
 
 // authorize checks whether the request principal may perform action on the
 // given bucket/key. On deny it writes AccessDenied; on evaluator failure it
 // writes InternalError. Returns true only when access is allowed.
-func (h *ObjectHandlers) authorize(w http.ResponseWriter, r *http.Request, action, bucketName, objectKey, listPrefix string, bucket *metadata.Bucket) bool {
+func (h *ObjectHandlers) authorize(w http.ResponseWriter, r *http.Request, action iam.Action, bucketName, objectKey, listPrefix string, bucket *metadata.Bucket) bool {
 	principal, ok := auth.PrincipalFromContext(r.Context())
 	if !ok || strings.TrimSpace(principal.UserID) == "" {
 		WriteS3Error(w, r, http.StatusForbidden, codeAccessDenied, messageAccessDenied)
@@ -47,7 +48,7 @@ func (h *ObjectHandlers) authorize(w http.ResponseWriter, r *http.Request, actio
 
 // authorizeQuiet is like authorize but does not write an HTTP response.
 // Used for multi-object delete per-key checks.
-func (h *ObjectHandlers) authorizeQuiet(r *http.Request, action, bucketName, objectKey string, bucket *metadata.Bucket) (bool, error) {
+func (h *ObjectHandlers) authorizeQuiet(r *http.Request, action iam.Action, bucketName, objectKey string, bucket *metadata.Bucket) (bool, error) {
 	principal, ok := auth.PrincipalFromContext(r.Context())
 	if !ok || strings.TrimSpace(principal.UserID) == "" {
 		return false, nil
@@ -82,7 +83,7 @@ func (h *ObjectHandlers) authorizeBucketRelationship(w http.ResponseWriter, r *h
 		WriteS3Error(w, r, http.StatusForbidden, codeAccessDenied, messageAccessDenied)
 		return false
 	}
-	if principal.Role == "admin" || bucket.OwnerID == principal.UserID {
+	if principal.Role == iam.RoleAdmin || bucket.OwnerID == principal.UserID {
 		return true
 	}
 	if h.Grants == nil {
@@ -132,7 +133,7 @@ func (h *ObjectHandlers) loadBucket(w http.ResponseWriter, r *http.Request, buck
 }
 
 // loadBucketForAction loads the bucket and authorizes action-specific access.
-func (h *ObjectHandlers) loadBucketForAction(w http.ResponseWriter, r *http.Request, bucketName, action, objectKey, listPrefix string) (*metadata.Bucket, bool) {
+func (h *ObjectHandlers) loadBucketForAction(w http.ResponseWriter, r *http.Request, bucketName string, action iam.Action, objectKey, listPrefix string) (*metadata.Bucket, bool) {
 	bucket, ok := h.loadBucket(w, r, bucketName)
 	if !ok {
 		return nil, false
@@ -145,7 +146,7 @@ func (h *ObjectHandlers) loadBucketForAction(w http.ResponseWriter, r *http.Requ
 
 // ensureBucketAction authorizes the given action on an existing bucket.
 // objectKey and listPrefix are optional depending on the action.
-func (h *ObjectHandlers) ensureBucketAction(w http.ResponseWriter, r *http.Request, bucketName, action, objectKey, listPrefix string) bool {
+func (h *ObjectHandlers) ensureBucketAction(w http.ResponseWriter, r *http.Request, bucketName string, action iam.Action, objectKey, listPrefix string) bool {
 	_, ok := h.loadBucketForAction(w, r, bucketName, action, objectKey, listPrefix)
 	return ok
 }

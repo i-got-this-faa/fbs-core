@@ -16,6 +16,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/i-got-this-faa/fbs/internal/auth"
 	"github.com/i-got-this-faa/fbs/internal/config"
+	"github.com/i-got-this-faa/fbs/internal/iam"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
 	"github.com/i-got-this-faa/fbs/internal/objectops"
 	"github.com/i-got-this-faa/fbs/internal/publicread"
@@ -556,7 +557,7 @@ func (h *Handlers) listObjects(r *http.Request, bucketName string, params object
 
 type createKeyInput struct {
 	displayName string
-	role        string
+	role        iam.Role
 }
 
 func decodeCreateKeyRequest(w http.ResponseWriter, r *http.Request) (createKeyInput, bool) {
@@ -584,17 +585,18 @@ func decodeCreateKeyRequest(w http.ResponseWriter, r *http.Request) (createKeyIn
 		return createKeyInput{}, false
 	}
 
-	role := "member"
+	role := iam.RoleMember
 	if _, exists := rawFields["role"]; exists {
 		decodedRole, ok := decodeStringField(w, rawFields, "role")
 		if !ok {
 			return createKeyInput{}, false
 		}
-		role = strings.TrimSpace(decodedRole)
-	}
-	if role != "admin" && role != "member" {
-		writeError(w, http.StatusBadRequest, errorCodeInvalidRequest, "role must be admin or member")
-		return createKeyInput{}, false
+		parsedRole, err := iam.ParseRole(strings.TrimSpace(decodedRole))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, errorCodeInvalidRequest, err.Error())
+			return createKeyInput{}, false
+		}
+		role = parsedRole
 	}
 
 	return createKeyInput{displayName: displayName, role: role}, true

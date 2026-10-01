@@ -6,14 +6,14 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/i-got-this-faa/fbs/internal/authz"
+	"github.com/i-got-this-faa/fbs/internal/iam"
 )
 
 // ListObjectVersions returns current objects as versions (versioning not supported).
 func (h *ObjectHandlers) ListObjectVersions(w http.ResponseWriter, r *http.Request) {
 	bucketName := chiBucketParam(r)
 	prefix := r.URL.Query().Get("prefix")
-	if !h.ensureBucketAction(w, r, bucketName, authz.ActionListBucket, "", prefix) {
+	if !h.ensureBucketAction(w, r, bucketName, iam.ActionListBucket, "", prefix) {
 		return
 	}
 

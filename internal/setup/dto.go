@@ -1,6 +1,9 @@
 package setup
 
-import "github.com/i-got-this-faa/fbs/internal/metadata"
+import (
+	"github.com/i-got-this-faa/fbs/internal/iam"
+	"github.com/i-got-this-faa/fbs/internal/metadata"
+)
 
 type statusResponse struct {
 	BootstrapRequired bool   `json:"bootstrap_required"`
@@ -23,14 +26,14 @@ type bootstrapResponse struct {
 }
 
 type keyResponse struct {
-	ID               string `json:"id"`
-	DisplayName      string `json:"display_name"`
-	AccessKeyID      string `json:"access_key_id"`
-	SigV4AccessKeyID string `json:"sigv4_access_key_id"`
-	Role             string `json:"role"`
-	IsActive         bool   `json:"is_active"`
-	CreatedAt        string `json:"created_at"`
-	UpdatedAt        string `json:"updated_at"`
+	ID               string   `json:"id"`
+	DisplayName      string   `json:"display_name"`
+	AccessKeyID      string   `json:"access_key_id"`
+	SigV4AccessKeyID string   `json:"sigv4_access_key_id"`
+	Role             iam.Role `json:"role"`
+	IsActive         bool     `json:"is_active"`
+	CreatedAt        string   `json:"created_at"`
+	UpdatedAt        string   `json:"updated_at"`
 }
 
 type sigv4Response struct {

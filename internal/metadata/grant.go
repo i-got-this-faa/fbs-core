@@ -8,48 +8,29 @@ import (
 	"strings"
 	"time"
 
+	"github.com/i-got-this-faa/fbs/internal/iam"
 	"modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
 )
-
-// grantableActions is the set of actions that may be stored on grant rows.
-// Kept local to avoid an import cycle with internal/authz (auth → metadata → authz → auth).
-// Keep in sync with authz.GrantableActions; TestGrantableActionsInSync enforces this.
-var grantableActions = map[string]struct{}{
-	"s3:ListBucket":               {},
-	"s3:GetObject":                {},
-	"s3:PutObject":                {},
-	"s3:DeleteObject":             {},
-	"s3:ListMultipartUploadParts": {},
-	"s3:AbortMultipartUpload":     {},
-}
-
-// GrantableActions returns the actions accepted on grant rows.
-func GrantableActions() []string {
-	out := make([]string, 0, len(grantableActions))
-	for action := range grantableActions {
-		out = append(out, action)
-	}
-	return out
-}
-
-func isGrantableAction(action string) bool {
-	_, ok := grantableActions[action]
-	return ok
-}
 
 // Grant represents a row in the grants table.
 type Grant struct {
 	ID            string
 	BucketName    string
 	GranteeUserID string
-	Action        string
+	Action        iam.Action
 	KeyPrefix     string
 	IsActive      bool
 	CreatedBy     string
 	Note          string
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
+}
+
+// GrantCreateResult is the outcome for one grant in a batch create.
+type GrantCreateResult struct {
+	Grant   Grant
+	Existed bool
 }
 
 // ErrGrantNotFound is returned when a grant lookup yields no rows.
@@ -65,9 +46,10 @@ var ErrDuplicateGrant = errors.New("duplicate active grant")
 // GrantRepository persists and queries resource grants.
 type GrantRepository interface {
 	Create(ctx context.Context, grant *Grant) error
-	// CreateIdempotent inserts a grant or returns the existing active grant
-	// with the same (bucket, grantee, action, prefix).
-	CreateIdempotent(ctx context.Context, grant *Grant) (*Grant, bool, error)
+	// CreateIdempotentBatch stores every grant in one transaction. A grant that
+	// matches an existing active grant (bucket, grantee, action, prefix) is
+	// returned as Existed instead of inserted.
+	CreateIdempotentBatch(ctx context.Context, grants []Grant) ([]GrantCreateResult, error)
 	GetByID(ctx context.Context, id string) (*Grant, error)
 	Update(ctx context.Context, grant *Grant) error
 	Delete(ctx context.Context, id string) error
@@ -97,57 +79,85 @@ func (r *sqliteGrantRepository) Create(ctx context.Context, grant *Grant) error 
 			is_active, created_by, note, created_at, updated_at
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
-	createdBy := sql.NullString{String: grant.CreatedBy, Valid: grant.CreatedBy != ""}
-	note := sql.NullString{String: grant.Note, Valid: grant.Note != ""}
+	if _, err := r.db.ExecContext(ctx, q, grantInsertArgs(grant)...); err != nil {
+		return fmt.Errorf("create grant: %w", err)
+	}
+	return nil
+}
 
-	_, err := r.db.ExecContext(ctx, q,
+func grantInsertArgs(grant *Grant) []any {
+	return []any{
 		grant.ID,
 		grant.BucketName,
 		grant.GranteeUserID,
 		grant.Action,
 		grant.KeyPrefix,
 		boolToInt(grant.IsActive),
-		createdBy,
-		note,
+		sql.NullString{String: grant.CreatedBy, Valid: grant.CreatedBy != ""},
+		sql.NullString{String: grant.Note, Valid: grant.Note != ""},
 		grant.CreatedAt.UTC(),
 		grant.UpdatedAt.UTC(),
-	)
-	if err != nil {
-		return fmt.Errorf("create grant: %w", err)
 	}
-	return nil
 }
 
-func (r *sqliteGrantRepository) CreateIdempotent(ctx context.Context, grant *Grant) (*Grant, bool, error) {
-	if err := validateGrantWrite(grant); err != nil {
-		return nil, false, err
-	}
+// insertGrantUnlessActiveDuplicate targets the partial unique index
+// idx_grants_unique_active, so it skips only an active duplicate.
+const insertGrantUnlessActiveDuplicate = `
+	INSERT INTO grants (
+		id, bucket_name, grantee_user_id, action, key_prefix,
+		is_active, created_by, note, created_at, updated_at
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	ON CONFLICT (bucket_name, grantee_user_id, action, key_prefix) WHERE is_active = 1 DO NOTHING`
 
-	existing, err := r.findActiveDuplicate(ctx, grant.BucketName, grant.GranteeUserID, grant.Action, grant.KeyPrefix)
-	if err != nil {
-		return nil, false, err
-	}
-	if existing != nil {
-		return existing, true, nil
-	}
-
-	if err := r.Create(ctx, grant); err != nil {
-		// Race: another writer may have inserted the same active grant.
-		if isUniqueConstraintError(err) {
-			existing, lookupErr := r.findActiveDuplicate(ctx, grant.BucketName, grant.GranteeUserID, grant.Action, grant.KeyPrefix)
-			if lookupErr != nil {
-				return nil, false, lookupErr
-			}
-			if existing != nil {
-				return existing, true, nil
-			}
+func (r *sqliteGrantRepository) CreateIdempotentBatch(ctx context.Context, grants []Grant) ([]GrantCreateResult, error) {
+	for i := range grants {
+		if err := validateGrantWrite(&grants[i]); err != nil {
+			return nil, err
 		}
-		return nil, false, err
 	}
-	return grant, false, nil
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin grant batch: %w", err)
+	}
+	defer tx.Rollback()
+
+	results := make([]GrantCreateResult, 0, len(grants))
+	for _, grant := range grants {
+		result, err := tx.ExecContext(ctx, insertGrantUnlessActiveDuplicate, grantInsertArgs(&grant)...)
+		if err != nil {
+			return nil, fmt.Errorf("create grant: %w", err)
+		}
+		inserted, err := result.RowsAffected()
+		if err != nil {
+			return nil, fmt.Errorf("create grant rows affected: %w", err)
+		}
+		if inserted == 1 {
+			results = append(results, GrantCreateResult{Grant: grant})
+			continue
+		}
+
+		existing, err := findActiveDuplicate(ctx, tx, grant.BucketName, grant.GranteeUserID, grant.Action, grant.KeyPrefix)
+		if err != nil {
+			return nil, err
+		}
+		if existing == nil {
+			return nil, fmt.Errorf("create grant: insert skipped but no active duplicate found")
+		}
+		results = append(results, GrantCreateResult{Grant: *existing, Existed: true})
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit grant batch: %w", err)
+	}
+	return results, nil
 }
 
-func (r *sqliteGrantRepository) findActiveDuplicate(ctx context.Context, bucketName, granteeUserID, action, keyPrefix string) (*Grant, error) {
+type rowQuerier interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
+func findActiveDuplicate(ctx context.Context, db rowQuerier, bucketName, granteeUserID string, action iam.Action, keyPrefix string) (*Grant, error) {
 	const q = `
 		SELECT id, bucket_name, grantee_user_id, action, key_prefix,
 		       is_active, created_by, note, created_at, updated_at
@@ -159,7 +169,7 @@ func (r *sqliteGrantRepository) findActiveDuplicate(ctx context.Context, bucketN
 		  AND is_active = 1
 		LIMIT 1`
 
-	row := r.db.QueryRowContext(ctx, q, bucketName, granteeUserID, action, keyPrefix)
+	row := db.QueryRowContext(ctx, q, bucketName, granteeUserID, action, keyPrefix)
 	grant, err := scanGrant(row)
 	if errors.Is(err, ErrGrantNotFound) {
 		return nil, nil
@@ -185,7 +195,7 @@ func (r *sqliteGrantRepository) Update(ctx context.Context, grant *Grant) error 
 	if grant == nil || strings.TrimSpace(grant.ID) == "" {
 		return ErrGrantNotFound
 	}
-	if grant.IsActive && !isGrantableAction(grant.Action) {
+	if grant.IsActive && !grant.Action.IsGrantable() {
 		return ErrInvalidGrantAction
 	}
 
@@ -325,7 +335,7 @@ func validateGrantWrite(grant *Grant) error {
 	if grant == nil {
 		return fmt.Errorf("grant is nil")
 	}
-	if !isGrantableAction(grant.Action) {
+	if !grant.Action.IsGrantable() {
 		return ErrInvalidGrantAction
 	}
 	return nil

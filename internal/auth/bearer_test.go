@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/i-got-this-faa/fbs/internal/iam"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
 )
 
@@ -29,7 +30,7 @@ func setupTestDB(t *testing.T) (*sql.DB, func()) {
 	return db, cleanup
 }
 
-func createTestUser(t *testing.T, repo metadata.UserRepository, displayName, role string, isActive bool) (*metadata.User, string) {
+func createTestUser(t *testing.T, repo metadata.UserRepository, displayName string, role iam.Role, isActive bool) (*metadata.User, string) {
 	t.Helper()
 
 	issued, err := IssueBearerToken()

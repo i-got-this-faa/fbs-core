@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/i-got-this-faa/fbs/internal/authz"
+	"github.com/i-got-this-faa/fbs/internal/iam"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
 	"github.com/i-got-this-faa/fbs/internal/storage"
 )
@@ -28,7 +28,7 @@ func (h *ObjectHandlers) CreateMultipartUpload(w http.ResponseWriter, r *http.Re
 		WriteS3Error(w, r, http.StatusBadRequest, codeInvalidRequest, messageInvalidRequest)
 		return
 	}
-	if !h.ensureBucketAction(w, r, bucketName, authz.ActionPutObject, key, "") {
+	if !h.ensureBucketAction(w, r, bucketName, iam.ActionPutObject, key, "") {
 		return
 	}
 	if err := storage.ValidateKey(key); err != nil {
@@ -84,7 +84,7 @@ func (h *ObjectHandlers) CreateMultipartUpload(w http.ResponseWriter, r *http.Re
 func (h *ObjectHandlers) ListMultipartUploads(w http.ResponseWriter, r *http.Request) {
 	bucketName := chiBucketParam(r)
 	prefix := r.URL.Query().Get("prefix")
-	if !h.ensureBucketAction(w, r, bucketName, authz.ActionListBucket, "", prefix) {
+	if !h.ensureBucketAction(w, r, bucketName, iam.ActionListBucket, "", prefix) {
 		return
 	}
 
@@ -158,7 +158,7 @@ func (h *ObjectHandlers) UploadPart(w http.ResponseWriter, r *http.Request) {
 		WriteS3Error(w, r, http.StatusBadRequest, codeInvalidRequest, messageInvalidRequest)
 		return
 	}
-	if !h.ensureBucketAction(w, r, bucketName, authz.ActionPutObject, key, "") {
+	if !h.ensureBucketAction(w, r, bucketName, iam.ActionPutObject, key, "") {
 		return
 	}
 
@@ -311,7 +311,7 @@ func (h *ObjectHandlers) ListParts(w http.ResponseWriter, r *http.Request) {
 		WriteS3Error(w, r, http.StatusBadRequest, codeInvalidRequest, messageInvalidRequest)
 		return
 	}
-	if !h.ensureBucketAction(w, r, bucketName, authz.ActionListMultipartUploadParts, key, "") {
+	if !h.ensureBucketAction(w, r, bucketName, iam.ActionListMultipartUploadParts, key, "") {
 		return
 	}
 
@@ -433,7 +433,7 @@ func (h *ObjectHandlers) CompleteMultipartUpload(w http.ResponseWriter, r *http.
 		WriteS3Error(w, r, http.StatusBadRequest, codeInvalidRequest, messageInvalidRequest)
 		return
 	}
-	if !h.ensureBucketAction(w, r, bucketName, authz.ActionPutObject, key, "") {
+	if !h.ensureBucketAction(w, r, bucketName, iam.ActionPutObject, key, "") {
 		return
 	}
 
@@ -689,7 +689,7 @@ func (h *ObjectHandlers) AbortMultipartUpload(w http.ResponseWriter, r *http.Req
 		WriteS3Error(w, r, http.StatusBadRequest, codeInvalidRequest, messageInvalidRequest)
 		return
 	}
-	if !h.ensureBucketAction(w, r, bucketName, authz.ActionAbortMultipartUpload, key, "") {
+	if !h.ensureBucketAction(w, r, bucketName, iam.ActionAbortMultipartUpload, key, "") {
 		return
 	}
 
@@ -779,7 +779,7 @@ func (h *ObjectHandlers) UploadPartCopy(w http.ResponseWriter, r *http.Request) 
 		WriteS3Error(w, r, http.StatusBadRequest, codeInvalidRequest, messageInvalidRequest)
 		return
 	}
-	if !h.ensureBucketAction(w, r, bucketName, authz.ActionPutObject, key, "") {
+	if !h.ensureBucketAction(w, r, bucketName, iam.ActionPutObject, key, "") {
 		return
 	}
 
@@ -838,7 +838,7 @@ func (h *ObjectHandlers) UploadPartCopy(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Ensure the source bucket exists.
-	if !h.ensureBucketAction(w, r, source.bucketName, authz.ActionGetObject, source.key, "") {
+	if !h.ensureBucketAction(w, r, source.bucketName, iam.ActionGetObject, source.key, "") {
 		return
 	}
 

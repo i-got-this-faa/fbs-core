@@ -12,7 +12,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/i-got-this-faa/fbs/internal/authz"
+	"github.com/i-got-this-faa/fbs/internal/iam"
 )
 
 const maxDeleteObjects = 1000
@@ -89,7 +89,7 @@ func (h *ObjectHandlers) DeleteObjects(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, requestedObject := range req.Objects {
 		key := requestedObject.Key
-		allowed, authErr := h.authorizeQuiet(r, authz.ActionDeleteObject, bucketName, key, bucket)
+		allowed, authErr := h.authorizeQuiet(r, iam.ActionDeleteObject, bucketName, key, bucket)
 		if authErr != nil {
 			h.logError("authorize delete object in batch", authErr, bucketName, key, "")
 			WriteS3Error(w, r, http.StatusInternalServerError, codeInternalError, messageInternalError)
