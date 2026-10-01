@@ -172,7 +172,7 @@ func (r *sqliteObjectRepository) List(ctx context.Context, bucketName, prefix, s
 
 	var objects []Object
 	for rows.Next() {
-		obj, err := scanObjectRow(rows)
+		obj, err := scanObject(rows)
 		if err != nil {
 			return nil, false, fmt.Errorf("list objects scan: %w", err)
 		}
@@ -331,7 +331,7 @@ func (r *sqliteObjectRepository) DeleteAllInBucket(ctx context.Context, bucketNa
 	return nil
 }
 
-func scanObject(row *sql.Row) (*Object, error) {
+func scanObject(row rowScanner) (*Object, error) {
 	var o Object
 	var createdAt, updatedAt string
 	var metaStr sql.NullString
@@ -375,22 +375,4 @@ func applyScannedExtras(o *Object, createdAt, updatedAt string, metaStr sql.Null
 		}
 	}
 	return nil
-}
-
-func scanObjectRow(rows *sql.Rows) (*Object, error) {
-	var o Object
-	var createdAt, updatedAt string
-	var metaStr sql.NullString
-	var csCRC32, csCRC32C, csCRC64NVME, csSHA1, csSHA256 sql.NullString
-
-	if err := rows.Scan(&o.ID, &o.BucketName, &o.Key, &o.Size, &o.ETag, &o.ContentType, &o.StoragePath, &createdAt, &updatedAt,
-		&o.IsMultipart, &o.PartsCount, &csCRC32, &csCRC32C, &csCRC64NVME, &csSHA1, &csSHA256, &metaStr); err != nil {
-		return nil, fmt.Errorf("scan object row: %w", err)
-	}
-
-	if err := applyScannedExtras(&o, createdAt, updatedAt, metaStr, csCRC32, csCRC32C, csCRC64NVME, csSHA1, csSHA256); err != nil {
-		return nil, err
-	}
-
-	return &o, nil
 }
