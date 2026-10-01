@@ -109,14 +109,14 @@ type activityResponse struct {
 }
 
 type activityItemResponse struct {
-	ID          string `json:"id"`
-	Action      string `json:"action"`
-	Bucket      string `json:"bucket"`
-	Key         string `json:"key,omitempty"`
-	Size        int64  `json:"size,omitempty"`
-	ETag        string `json:"etag,omitempty"`
-	ActorUserID string `json:"actor_user_id,omitempty"`
-	CreatedAt   string `json:"created_at"`
+	ID          string                  `json:"id"`
+	Action      metadata.ActivityAction `json:"action"`
+	Bucket      string                  `json:"bucket"`
+	Key         string                  `json:"key,omitempty"`
+	Size        int64                   `json:"size,omitempty"`
+	ETag        string                  `json:"etag,omitempty"`
+	ActorUserID string                  `json:"actor_user_id,omitempty"`
+	CreatedAt   string                  `json:"created_at"`
 }
 
 type configResponse struct {

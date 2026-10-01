@@ -166,7 +166,7 @@ func (h *ObjectHandlers) PutObject(w http.ResponseWriter, r *http.Request) {
 		WriteS3Error(w, r, http.StatusInternalServerError, codeInternalError, messageInternalError)
 		return
 	}
-	h.recordActivity(r, "put_object", bucketName, key, size, obj.ETag)
+	h.recordActivity(r, metadata.ActivityPutObject, bucketName, key, size, obj.ETag)
 
 	if oldObj != nil && oldObj.StoragePath != storagePath {
 		if err := h.Storage.Delete(r.Context(), oldObj.StoragePath); err != nil {
@@ -336,7 +336,7 @@ func (h *ObjectHandlers) DeleteObject(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	h.recordActivity(r, "delete_object", bucketName, key, obj.Size, obj.ETag)
+	h.recordActivity(r, metadata.ActivityDeleteObject, bucketName, key, obj.Size, obj.ETag)
 
 	w.WriteHeader(http.StatusNoContent)
 }

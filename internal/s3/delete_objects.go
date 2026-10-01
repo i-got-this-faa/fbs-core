@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/i-got-this-faa/fbs/internal/iam"
+	"github.com/i-got-this-faa/fbs/internal/metadata"
 )
 
 const maxDeleteObjects = 1000
@@ -113,13 +114,13 @@ func (h *ObjectHandlers) DeleteObjects(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if existed {
-			h.recordActivity(r, "delete_object", bucketName, key, obj.Size, obj.ETag)
+			h.recordActivity(r, metadata.ActivityDeleteObject, bucketName, key, obj.Size, obj.ETag)
 		}
 		if !req.Quiet {
 			result.Deleted = append(result.Deleted, deletedObjectEntry{Key: key})
 		}
 	}
-	h.recordActivity(r, "delete_objects", bucketName, "", int64(len(req.Objects)), "")
+	h.recordActivity(r, metadata.ActivityDeleteObjects, bucketName, "", int64(len(req.Objects)), "")
 
 	w.Header().Set("Content-Type", "application/xml")
 	w.WriteHeader(http.StatusOK)

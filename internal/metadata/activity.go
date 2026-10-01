@@ -7,9 +7,29 @@ import (
 	"time"
 )
 
+// ActivityAction names an audited operation. The values are a dashboard
+// contract: clients filter and label the activity feed by these names.
+type ActivityAction string
+
+const (
+	ActivityPutObject               ActivityAction = "put_object"
+	ActivityCopyObject              ActivityAction = "copy_object"
+	ActivityDeleteObject            ActivityAction = "delete_object"
+	ActivityDeleteObjects           ActivityAction = "delete_objects"
+	ActivityCompleteMultipartUpload ActivityAction = "complete_multipart_upload"
+	ActivityCreateBucket            ActivityAction = "create_bucket"
+	ActivityDeleteBucket            ActivityAction = "delete_bucket"
+	ActivityForceDeleteBucket       ActivityAction = "force_delete_bucket"
+	ActivityEmptyBucket             ActivityAction = "empty_bucket"
+	ActivityTransferBucketOwnership ActivityAction = "transfer_bucket_ownership"
+	ActivityCreateGrant             ActivityAction = "create_grant"
+	ActivityUpdateGrant             ActivityAction = "update_grant"
+	ActivityDeleteGrant             ActivityAction = "delete_grant"
+)
+
 type ObjectActivity struct {
 	ID          string
-	Action      string
+	Action      ActivityAction
 	BucketName  string
 	ObjectKey   string
 	Size        int64
@@ -20,7 +40,7 @@ type ObjectActivity struct {
 
 type ActivityListFilter struct {
 	BucketName string
-	Action     string
+	Action     ActivityAction
 	Limit      int
 }
 

@@ -58,6 +58,13 @@ func WriteAuthError(w http.ResponseWriter, _ *http.Request, err error) {
 	}
 }
 
+// internalError logs why a request failed and returns a generic 500 so that
+// internal details do not reach the client.
+func (h *Handlers) internalError(w http.ResponseWriter, r *http.Request, message string, err error) {
+	h.Logger.Error(message, "error", err, "method", r.Method, "path", r.URL.Path)
+	writeError(w, http.StatusInternalServerError, errorCodeInternal, message)
+}
+
 func setNoStoreHeaders(w http.ResponseWriter) {
 	responses.WithNoStore(w)
 }
