@@ -217,6 +217,8 @@ func (h *ObjectHandlers) writeCompleteUploadError(w http.ResponseWriter, r *http
 		// assembled it. Releasing restores the claim this request held.
 		WriteS3Error(w, r, http.StatusNotFound, codeNoSuchUpload, messageNoSuchUpload)
 	case errors.Is(err, metadata.ErrPreconditionFailed):
+		// Settling leaves the upload in "completing", so a retry gets
+		// NoSuchUpload. Kept as-is pending issue #38.
 		claim.settle()
 		WriteS3Error(w, r, http.StatusPreconditionFailed, codePreconditionFailed, messagePreconditionFailed)
 	case errors.Is(err, metadata.ErrObjectNotFound):
