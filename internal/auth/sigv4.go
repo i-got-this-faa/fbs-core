@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -510,45 +509,14 @@ func hmacSHA256(key []byte, data string) []byte {
 	return h.Sum(nil)
 }
 
-// SignRequest is a test helper that signs an HTTP request with SigV4.
-// It is exported so integration tests can use it.
+// SignRequest signs r with SigV4 at the current time. Tests and tools use it
+// to act as an S3 client.
 func SignRequest(r *http.Request, accessKeyID, secretKey, region, service string, signedHeaders []string, payloadHash string) {
-	if payloadHash == "" {
-		payloadHash = unsignedPayload
-	}
-
-	now := time.Now().UTC()
-	timestamp := now.Format("20060102T150405Z")
-	date := now.Format("20060102")
-
-	r.Header.Set("X-Amz-Date", timestamp)
-
-	if r.Header.Get("Host") == "" && r.Host != "" {
-		r.Header.Set("Host", r.Host)
-	}
-
-	if payloadHash != unsignedPayload {
-		r.Header.Set("X-Amz-Content-SHA256", payloadHash)
-	}
-
-	signedHeadersStr := strings.Join(signedHeaders, ";")
-	canonicalRequest := buildCanonicalRequest(r, signedHeadersStr, payloadHash)
-
-	credential := accessKeyID + "/" + date + "/" + region + "/" + service + "/" + sigV4Terminator
-	stringToSign := buildStringToSign(timestamp, credential, canonicalRequest)
-	signature := computeSignature(secretKey, date, region, service, stringToSign)
-
-	authHeader := sigV4Algorithm +
-		" Credential=" + credential +
-		", SignedHeaders=" + signedHeadersStr +
-		", Signature=" + signature
-
-	r.Header.Set("Authorization", authHeader)
+	SignRequestAt(r, accessKeyID, secretKey, region, service, signedHeaders, payloadHash, time.Now().UTC())
 }
 
-// SignRequestWithContext signs a request using the provided clock time.
-func SignRequestWithContext(ctx context.Context, r *http.Request, accessKeyID, secretKey, region, service string, signedHeaders []string, payloadHash string, now time.Time) {
-	_ = ctx // reserved for future extensibility
+// SignRequestAt signs r with SigV4 as of now.
+func SignRequestAt(r *http.Request, accessKeyID, secretKey, region, service string, signedHeaders []string, payloadHash string, now time.Time) {
 	if payloadHash == "" {
 		payloadHash = unsignedPayload
 	}

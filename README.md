@@ -47,15 +47,21 @@ Management and S3 protected routes accept either `Authorization: Bearer ...` or 
 
 ## Project Structure
 
-- `cmd/server/`: Main application entry point.
+- `cmd/server/`: Entry point, dependency wiring, routing, and graceful shutdown.
 - `internal/`:
-  - `auth/`: Authentication framework (AWS SigV4 & Bearer tokens).
+  - `auth/`: Authentication (AWS SigV4, Bearer tokens, dev mode) and request principals.
+  - `authz/`: Authorization evaluator (admin, bucket owner, resource grants).
   - `config/`: Application configuration parsing.
-  - `http/`: HTTP router and core middleware (logging, recovery).
-  - `metadata/`: SQLite database interactions for buckets, objects, and multipart uploads.
-  - `setup/`: Loopback-only first-start bootstrap endpoints.
+  - `http/`: HTTP router and core middleware (logging, recovery, request IDs).
+  - `iam/`: Shared `Role` and `Action` types.
+  - `management/`: Admin JSON Management API.
+  - `metadata/`: SQLite repositories for users, buckets, objects, grants, activity, and multipart uploads.
+  - `objectops/`: Object operations shared by the S3 and Management APIs.
+  - `publicread/`: Signed public read URLs.
+  - `responses/`: Shared JSON response helpers.
   - `s3/`: S3 API handlers and protocol logic.
-  - `server/`: Server initialization and lifecycle management.
+  - `s3compat/`: S3 region constant.
+  - `setup/`: Loopback-only first-start bootstrap endpoints.
   - `storage/`: Disk storage engine (read, write, delete, path sanitizing, and reconciliation).
 - `migrations/`: SQLite database schemas and migrations.
 - `docs/`: Completed project documentation for architecture, configuration, APIs, storage, operations, and development.
