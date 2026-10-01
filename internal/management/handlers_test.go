@@ -844,6 +844,7 @@ func newManagementTestEnvWithConfig(t *testing.T, cfg config.Config) managementT
 		}
 	}
 	grantRepo := metadata.NewGrantRepository(db)
+	shareLinkRepo := metadata.NewShareLinkRepository(db)
 	handlers := &management.Handlers{
 		Management:       metadata.NewManagementRepository(db),
 		Buckets:          bucketRepo,
@@ -854,6 +855,7 @@ func newManagementTestEnvWithConfig(t *testing.T, cfg config.Config) managementT
 		Storage:          disk,
 		Config:           cfg,
 		PublicReadSigner: signer,
+		ShareLinks:       shareLinkRepo,
 	}
 	authChain := &auth.ChainAuthenticator{
 		Authenticators: []auth.Authenticator{
@@ -874,9 +876,11 @@ func newManagementTestEnvWithConfig(t *testing.T, cfg config.Config) managementT
 		Logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
 		S3CacheControl:   cfg.S3CacheControl,
 		PublicReadSigner: signer,
+		ShareLinks:       shareLinkRepo,
 	}
 	router := httpapi.NewRouter(routerCfg, nil, func(r chi.Router) {
 		s3.RegisterPublicReadRoutes(r, objectHandlers)
+		s3.RegisterShareLinkRoutes(r, objectHandlers)
 		r.Route("/api/management", func(managementRoutes chi.Router) {
 			managementRoutes.Use(auth.RequireAuthentication(authChain, management.WriteAuthError))
 			management.RegisterGrantRoutes(managementRoutes, handlers)

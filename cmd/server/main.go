@@ -114,6 +114,7 @@ func main() {
 	}
 
 	grantRepo := metadata.NewGrantRepository(db)
+	shareLinkRepo := metadata.NewShareLinkRepository(db)
 	authzEvaluator := s3.NewAuthzEvaluator(grantRepo)
 
 	managementHandlers := &management.Handlers{
@@ -126,6 +127,7 @@ func main() {
 		Storage:          storageEngine,
 		Config:           cfg,
 		PublicReadSigner: publicReadSigner,
+		ShareLinks:       shareLinkRepo,
 	}
 	objectHandlers := &s3.ObjectHandlers{
 		Users:            userRepo,
@@ -139,6 +141,7 @@ func main() {
 		S3CacheControl:   cfg.S3CacheControl,
 		PublicReadSigner: publicReadSigner,
 		MultipartUploads: multipartRepo,
+		ShareLinks:       shareLinkRepo,
 	}
 	setupHandlers := &setup.Handlers{
 		Bootstrap: bootstrapRepo,
@@ -160,6 +163,7 @@ func main() {
 
 	router := httpapi.NewRouter(cfg, logger, func(r chi.Router) {
 		s3.RegisterPublicReadRoutes(r, objectHandlers)
+		s3.RegisterShareLinkRoutes(r, objectHandlers)
 		setup.RegisterRoutes(r, setupHandlers)
 		r.Route("/api/management", func(managementRoutes chi.Router) {
 			managementRoutes.Use(auth.RequireAuthentication(managementAuthChain, management.WriteAuthError))

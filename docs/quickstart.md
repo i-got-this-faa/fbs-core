@@ -209,6 +209,19 @@ Open the returned `url` without auth before it expires.
 
 To force a browser download, add `"response_content_disposition": "attachment; filename=\"hello.txt\""` to the request body. The generated public URL signs the override. Leave the field out for the normal object response.
 
+## 8. Optional: Share Short Links
+
+Share links are short, revocable URLs that serve an object directly. They work without a signing secret:
+
+```bash
+curl -X POST http://127.0.0.1:9000/api/management/share-links \
+  -H "Authorization: Bearer ${FBS_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d '{"bucket":"quickstart","key":"hello.txt"}'
+```
+
+Open the returned `url`, for example `http://127.0.0.1:9000/s/x7Kp2mQa9Z`. Add `"alias":"hello"` for a memorable code or `"expires_in_seconds":86400` for an expiry. Revoke the link with `DELETE /api/management/share-links/{code}`.
+
 ## Docker Compose Example
 
 ```yaml
