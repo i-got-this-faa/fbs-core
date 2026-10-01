@@ -68,6 +68,16 @@ func NewObjectRepository(db *sql.DB) ObjectRepository {
 	return &sqliteObjectRepository{db: db}
 }
 func (r *sqliteObjectRepository) Create(ctx context.Context, obj *Object) error {
+	return upsertObject(ctx, r.db, obj)
+}
+
+type execer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+// upsertObject stores obj, replacing any object with the same bucket and key.
+// Empty checksums are stored as NULL.
+func upsertObject(ctx context.Context, db execer, obj *Object) error {
 	const q = `
 		INSERT INTO objects (id, bucket_name, key, size, etag, content_type, storage_path, created_at, updated_at,
 			is_multipart, parts_count, checksum_crc32, checksum_crc32c, checksum_crc64nvme, checksum_sha1, checksum_sha256, user_metadata)
@@ -96,7 +106,6 @@ func (r *sqliteObjectRepository) Create(ctx context.Context, obj *Object) error 
 	if obj.UpdatedAt.IsZero() {
 		obj.UpdatedAt = obj.CreatedAt
 	}
-	now := obj.CreatedAt.UTC()
 
 	var metaStr *string
 	if len(obj.UserMetadata) > 0 {
@@ -108,29 +117,17 @@ func (r *sqliteObjectRepository) Create(ctx context.Context, obj *Object) error 
 		metaStr = &s
 	}
 
-	_, err := r.db.ExecContext(ctx, q,
-		obj.ID,
-		obj.BucketName,
-		obj.Key,
-		obj.Size,
-		obj.ETag,
-		obj.ContentType,
-		obj.StoragePath,
-		now,
-		obj.UpdatedAt.UTC(),
-		obj.IsMultipart,
-		obj.PartsCount,
-		obj.ChecksumCRC32,
-		obj.ChecksumCRC32C,
-		obj.ChecksumCRC64NVME,
-		obj.ChecksumSHA1,
-		obj.ChecksumSHA256,
+	_, err := db.ExecContext(ctx, q,
+		obj.ID, obj.BucketName, obj.Key, obj.Size, obj.ETag,
+		obj.ContentType, obj.StoragePath, obj.CreatedAt.UTC(), obj.UpdatedAt.UTC(),
+		obj.IsMultipart, obj.PartsCount,
+		nullify(obj.ChecksumCRC32), nullify(obj.ChecksumCRC32C), nullify(obj.ChecksumCRC64NVME),
+		nullify(obj.ChecksumSHA1), nullify(obj.ChecksumSHA256),
 		metaStr,
 	)
 	if err != nil {
 		return fmt.Errorf("create object: %w", err)
 	}
-
 	return nil
 }
 

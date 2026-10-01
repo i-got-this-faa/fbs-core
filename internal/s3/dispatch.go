@@ -50,7 +50,7 @@ func (h *ObjectHandlers) DispatchBucketDelete(w http.ResponseWriter, r *http.Req
 	case query.Has("cors"), query.Has("policy"), query.Has("uploads"), query.Has("uploadId"):
 		h.NotImplemented(w, r)
 	case query.Has("delete"):
-		// Non-standard verb; kept for compatibility with clients that send DELETE.
+		// Non-standard verb: fbs-web sends DeleteObjects as DELETE /{bucket}?delete.
 		h.DeleteObjects(w, r)
 	default:
 		h.DeleteBucket(w, r)
@@ -99,6 +99,58 @@ func (h *ObjectHandlers) DispatchObjectDelete(w http.ResponseWriter, r *http.Req
 	}
 	if query.Has("uploadId") {
 		h.DispatchDelete(w, r)
+		return
+	}
+	h.DeleteObject(w, r)
+}
+
+// DispatchPut routes PUT requests to either PutObject or UploadPart.
+func (h *ObjectHandlers) DispatchPut(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	hasUploadID := q.Has("uploadId")
+	hasPartNumber := q.Has("partNumber")
+	if hasUploadID && hasPartNumber && q.Get("uploadId") != "" && q.Get("partNumber") != "" {
+		if r.Header.Get("x-amz-copy-source") != "" {
+			h.UploadPartCopy(w, r)
+			return
+		}
+		h.UploadPart(w, r)
+		return
+	}
+	if hasUploadID || hasPartNumber {
+		WriteS3Error(w, r, http.StatusBadRequest, codeInvalidRequest, messageInvalidRequest)
+		return
+	}
+	if r.Header.Get("x-amz-copy-source") != "" {
+		h.CopyObject(w, r)
+		return
+	}
+	h.PutObject(w, r)
+}
+
+// DispatchPost routes POST requests to either CreateMultipartUpload or CompleteMultipartUpload.
+func (h *ObjectHandlers) DispatchPost(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	if q.Has("uploads") {
+		h.CreateMultipartUpload(w, r)
+		return
+	}
+	if q.Get("uploadId") != "" {
+		h.CompleteMultipartUpload(w, r)
+		return
+	}
+	WriteS3Error(w, r, http.StatusBadRequest, codeInvalidRequest, messageInvalidRequest)
+}
+
+// DispatchDelete routes DELETE requests to either DeleteObject or AbortMultipartUpload.
+func (h *ObjectHandlers) DispatchDelete(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	if q.Has("uploadId") {
+		if q.Get("uploadId") == "" {
+			WriteS3Error(w, r, http.StatusBadRequest, codeInvalidRequest, messageInvalidRequest)
+			return
+		}
+		h.AbortMultipartUpload(w, r)
 		return
 	}
 	h.DeleteObject(w, r)
