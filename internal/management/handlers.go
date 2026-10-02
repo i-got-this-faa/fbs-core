@@ -16,6 +16,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/i-got-this-faa/fbs/internal/auth"
 	"github.com/i-got-this-faa/fbs/internal/config"
+	"github.com/i-got-this-faa/fbs/internal/iam"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
 	"github.com/i-got-this-faa/fbs/internal/objectops"
 	"github.com/i-got-this-faa/fbs/internal/publicread"
@@ -40,12 +41,13 @@ type Handlers struct {
 	Storage          storage.DiskEngine
 	Config           config.Config
 	PublicReadSigner *publicread.Signer
+	Logger           *slog.Logger
 }
 
 func (h *Handlers) Metrics(w http.ResponseWriter, r *http.Request) {
 	metrics, err := h.Management.Metrics(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to load metrics")
+		h.internalError(w, r, "failed to load metrics", err)
 		return
 	}
 
@@ -61,7 +63,7 @@ func (h *Handlers) Metrics(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) ListBuckets(w http.ResponseWriter, r *http.Request) {
 	summaries, err := h.Management.ListBucketSummaries(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to list buckets")
+		h.internalError(w, r, "failed to list buckets", err)
 		return
 	}
 
@@ -86,7 +88,7 @@ func (h *Handlers) GetBucket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to load bucket")
+		h.internalError(w, r, "failed to load bucket", err)
 		return
 	}
 
@@ -101,12 +103,12 @@ func (h *Handlers) DeleteBucket(w http.ResponseWriter, r *http.Request) {
 
 	objects, err := objectops.EmptyBucket(r.Context(), h.Objects, h.Storage, bucketName)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to delete bucket objects")
+		h.internalError(w, r, "failed to delete bucket objects", err)
 		return
 	}
 
 	for _, obj := range objects {
-		h.recordActivity(r, "delete_object", bucketName, obj.Key, obj.Size, obj.ETag)
+		h.recordActivity(r, metadata.ActivityDeleteObject, bucketName, obj.Key, obj.Size, obj.ETag)
 	}
 
 	err = h.Buckets.Delete(r.Context(), bucketName)
@@ -115,10 +117,10 @@ func (h *Handlers) DeleteBucket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to delete bucket")
+		h.internalError(w, r, "failed to delete bucket", err)
 		return
 	}
-	h.recordActivity(r, "force_delete_bucket", bucketName, "", int64(len(objects)), "")
+	h.recordActivity(r, metadata.ActivityForceDeleteBucket, bucketName, "", int64(len(objects)), "")
 
 	setNoStoreHeaders(w)
 	w.WriteHeader(http.StatusNoContent)
@@ -132,14 +134,14 @@ func (h *Handlers) EmptyBucket(w http.ResponseWriter, r *http.Request) {
 
 	objects, err := objectops.EmptyBucket(r.Context(), h.Objects, h.Storage, bucketName)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to empty bucket")
+		h.internalError(w, r, "failed to empty bucket", err)
 		return
 	}
 
 	for _, obj := range objects {
-		h.recordActivity(r, "delete_object", bucketName, obj.Key, obj.Size, obj.ETag)
+		h.recordActivity(r, metadata.ActivityDeleteObject, bucketName, obj.Key, obj.Size, obj.ETag)
 	}
-	h.recordActivity(r, "empty_bucket", bucketName, "", int64(len(objects)), "")
+	h.recordActivity(r, metadata.ActivityEmptyBucket, bucketName, "", int64(len(objects)), "")
 
 	setNoStoreHeaders(w)
 	w.WriteHeader(http.StatusNoContent)
@@ -159,7 +161,7 @@ func (h *Handlers) ListObjects(w http.ResponseWriter, r *http.Request) {
 
 	objects, commonPrefixes, isTruncated, nextCursor, err := h.listObjects(r, bucketName, params)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to list objects")
+		h.internalError(w, r, "failed to list objects", err)
 		return
 	}
 
@@ -193,7 +195,7 @@ func (h *Handlers) GetObject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to load object")
+		h.internalError(w, r, "failed to load object", err)
 		return
 	}
 
@@ -226,7 +228,7 @@ func (h *Handlers) CreatePublicObjectURL(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusNotFound, errorCodeNotFound, "object not found")
 		return
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to load object")
+		h.internalError(w, r, "failed to load object", err)
 		return
 	}
 
@@ -251,7 +253,7 @@ func (h *Handlers) CreatePublicObjectURL(w http.ResponseWriter, r *http.Request)
 func (h *Handlers) ListKeys(w http.ResponseWriter, r *http.Request) {
 	users, err := h.Users.List(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to list keys")
+		h.internalError(w, r, "failed to list keys", err)
 		return
 	}
 
@@ -332,7 +334,7 @@ func (h *Handlers) CreateKey(w http.ResponseWriter, r *http.Request) {
 
 	issued, sigv4Creds, user, err := auth.CreateBearerToken(r.Context(), h.Users, req.displayName, req.role)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to create key")
+		h.internalError(w, r, "failed to create key", err)
 		return
 	}
 
@@ -359,7 +361,7 @@ func (h *Handlers) DeleteKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to delete key")
+		h.internalError(w, r, "failed to delete key", err)
 		return
 	}
 
@@ -385,7 +387,7 @@ func (h *Handlers) PatchKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to load key")
+		h.internalError(w, r, "failed to load key", err)
 		return
 	}
 
@@ -400,13 +402,13 @@ func (h *Handlers) PatchKey(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, errorCodeNotFound, "key not found")
 		return
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to update key")
+		h.internalError(w, r, "failed to update key", err)
 		return
 	}
 
 	updated, err := h.Users.GetByID(r.Context(), id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to load updated key")
+		h.internalError(w, r, "failed to load updated key", err)
 		return
 	}
 
@@ -431,7 +433,7 @@ func (h *Handlers) ListActivity(w http.ResponseWriter, r *http.Request) {
 		Limit:      params.limit,
 	})
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to list activity")
+		h.internalError(w, r, "failed to list activity", err)
 		return
 	}
 
@@ -469,7 +471,7 @@ func (h *Handlers) ensureBucket(w http.ResponseWriter, r *http.Request, bucketNa
 		return false
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to load bucket")
+		h.internalError(w, r, "failed to load bucket", err)
 		return false
 	}
 
@@ -556,7 +558,7 @@ func (h *Handlers) listObjects(r *http.Request, bucketName string, params object
 
 type createKeyInput struct {
 	displayName string
-	role        string
+	role        iam.Role
 }
 
 func decodeCreateKeyRequest(w http.ResponseWriter, r *http.Request) (createKeyInput, bool) {
@@ -584,17 +586,18 @@ func decodeCreateKeyRequest(w http.ResponseWriter, r *http.Request) (createKeyIn
 		return createKeyInput{}, false
 	}
 
-	role := "member"
+	role := iam.RoleMember
 	if _, exists := rawFields["role"]; exists {
 		decodedRole, ok := decodeStringField(w, rawFields, "role")
 		if !ok {
 			return createKeyInput{}, false
 		}
-		role = strings.TrimSpace(decodedRole)
-	}
-	if role != "admin" && role != "member" {
-		writeError(w, http.StatusBadRequest, errorCodeInvalidRequest, "role must be admin or member")
-		return createKeyInput{}, false
+		parsedRole, err := iam.ParseRole(strings.TrimSpace(decodedRole))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, errorCodeInvalidRequest, err.Error())
+			return createKeyInput{}, false
+		}
+		role = parsedRole
 	}
 
 	return createKeyInput{displayName: displayName, role: role}, true
@@ -681,7 +684,7 @@ func decodeBoolField(w http.ResponseWriter, rawFields map[string]json.RawMessage
 type activityParams struct {
 	limit  int
 	bucket string
-	action string
+	action metadata.ActivityAction
 }
 
 func parseActivityParams(r *http.Request) (activityParams, error) {
@@ -701,30 +704,23 @@ func parseActivityParams(r *http.Request) (activityParams, error) {
 	return activityParams{
 		limit:  limit,
 		bucket: strings.TrimSpace(query.Get("bucket")),
-		action: strings.TrimSpace(query.Get("action")),
+		action: metadata.ActivityAction(strings.TrimSpace(query.Get("action"))),
 	}, nil
 }
 
-func (h *Handlers) recordActivity(r *http.Request, action, bucketName, key string, size int64, etag string) {
-	if h.Activity == nil {
-		return
-	}
-
-	actorUserID := ""
-	if principal, ok := auth.PrincipalFromContext(r.Context()); ok {
-		actorUserID = principal.UserID
-	}
-
-	if err := h.Activity.Create(r.Context(), &metadata.ObjectActivity{
-		ID:          uuid.New().String(),
-		Action:      action,
-		BucketName:  bucketName,
-		ObjectKey:   key,
-		Size:        size,
-		ETag:        etag,
-		ActorUserID: actorUserID,
-		CreatedAt:   time.Now().UTC(),
-	}); err != nil {
-		slog.Warn("record management object activity", "error", err, "bucket", bucketName, "key", key, "action", action)
+// recordActivity audits a completed operation. Activity is not part of the
+// operation, so a storage failure is logged and the request still succeeds.
+func (h *Handlers) recordActivity(r *http.Request, action metadata.ActivityAction, bucketName, key string, size int64, etag string) {
+	err := objectops.RecordActivity(r.Context(), h.Activity, metadata.ObjectActivity{
+		ID:         uuid.New().String(),
+		Action:     action,
+		BucketName: bucketName,
+		ObjectKey:  key,
+		Size:       size,
+		ETag:       etag,
+		CreatedAt:  time.Now().UTC(),
+	})
+	if err != nil {
+		h.logger().Error("record object activity", "error", err, "action", action, "bucket", bucketName, "key", key)
 	}
 }

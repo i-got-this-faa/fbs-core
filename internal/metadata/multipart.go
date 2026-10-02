@@ -17,7 +17,7 @@ type MultipartUpload struct {
 	Key               string
 	ContentType       string
 	ChecksumAlgorithm string
-	Status            string
+	Status            MultipartUploadStatus
 	CreatedAt         time.Time
 	StatusUpdatedAt   time.Time
 	UserMetadata      map[string]string
@@ -62,10 +62,10 @@ type MultipartUploadRepository interface {
 	// ClaimUpload atomically checks the upload is active and sets its status.
 	// Returns ErrMultipartUploadNotFound if the upload does not exist,
 	// or ErrUploadAlreadyClaimed if it is no longer active.
-	ClaimUpload(ctx context.Context, uploadID string, status string) error
+	ClaimUpload(ctx context.Context, uploadID string, status MultipartUploadStatus) error
 	// SetUploadStatus unconditionally sets the upload status.
 	// Returns ErrMultipartUploadNotFound if the upload does not exist.
-	SetUploadStatus(ctx context.Context, uploadID string, status string) error
+	SetUploadStatus(ctx context.Context, uploadID string, status MultipartUploadStatus) error
 	// ListByBucket returns multipart uploads in a bucket, with optional filtering
 	// and pagination. maxUploads is clamped to 1–1000.
 	ListByBucket(ctx context.Context, bucketName string, prefix, keyMarker, uploadIDMarker string, maxUploads int) (uploads []MultipartUpload, isTruncated bool, nextKeyMarker string, nextUploadIDMarker string, err error)
@@ -80,11 +80,15 @@ var ErrUploadAlreadyClaimed = errors.New("multipart upload already claimed")
 // ErrPreconditionFailed is returned when a precondition check fails.
 var ErrPreconditionFailed = errors.New("precondition failed")
 
-// Multipart upload status values.
+// MultipartUploadStatus is the lifecycle state of a multipart upload. Only an
+// active upload accepts parts; completing and aborted uploads are claimed by
+// one request so that concurrent completes and aborts cannot both proceed.
+type MultipartUploadStatus string
+
 const (
-	MultipartUploadStatusActive     = "active"
-	MultipartUploadStatusCompleting = "completing"
-	MultipartUploadStatusAborted    = "aborted"
+	MultipartUploadStatusActive     MultipartUploadStatus = "active"
+	MultipartUploadStatusCompleting MultipartUploadStatus = "completing"
+	MultipartUploadStatusAborted    MultipartUploadStatus = "aborted"
 )
 
 type sqliteMultipartUploadRepository struct {
@@ -186,7 +190,7 @@ func (r *sqliteMultipartUploadRepository) ListStale(ctx context.Context, olderTh
 
 	var uploads []MultipartUpload
 	for rows.Next() {
-		u, err := scanMultipartUploadRow(rows)
+		u, err := scanMultipartUpload(rows)
 		if err != nil {
 			return nil, fmt.Errorf("list stale uploads scan: %w", err)
 		}
@@ -225,7 +229,7 @@ func (r *sqliteMultipartUploadRepository) ListAllUploadIDs(ctx context.Context) 
 	return ids, nil
 }
 
-func (r *sqliteMultipartUploadRepository) ClaimUpload(ctx context.Context, uploadID string, status string) error {
+func (r *sqliteMultipartUploadRepository) ClaimUpload(ctx context.Context, uploadID string, status MultipartUploadStatus) error {
 	if !validMultipartUploadStatus(status) || status == MultipartUploadStatusActive {
 		return fmt.Errorf("invalid multipart upload claim status: %s", status)
 	}
@@ -247,7 +251,7 @@ func (r *sqliteMultipartUploadRepository) ClaimUpload(ctx context.Context, uploa
 		return fmt.Errorf("begin immediate tx: %w", err)
 	}
 
-	var currentStatus string
+	var currentStatus MultipartUploadStatus
 	if err := conn.QueryRowContext(ctx,
 		`SELECT status FROM multipart_uploads WHERE id = ?`,
 		uploadID,
@@ -276,7 +280,7 @@ func (r *sqliteMultipartUploadRepository) ClaimUpload(ctx context.Context, uploa
 	return nil
 }
 
-func (r *sqliteMultipartUploadRepository) SetUploadStatus(ctx context.Context, uploadID string, status string) error {
+func (r *sqliteMultipartUploadRepository) SetUploadStatus(ctx context.Context, uploadID string, status MultipartUploadStatus) error {
 	if !validMultipartUploadStatus(status) {
 		return fmt.Errorf("invalid multipart upload status: %s", status)
 	}
@@ -318,7 +322,7 @@ func (r *sqliteMultipartUploadRepository) AddPart(ctx context.Context, part *Mul
 		return "", fmt.Errorf("begin immediate tx: %w", err)
 	}
 
-	var status string
+	var status MultipartUploadStatus
 	if err := conn.QueryRowContext(ctx,
 		`SELECT status FROM multipart_uploads WHERE id = ?`,
 		part.UploadID,
@@ -401,101 +405,18 @@ func (r *sqliteMultipartUploadRepository) CompleteUpload(ctx context.Context, ob
 		return "", fmt.Errorf("begin immediate tx: %w", err)
 	}
 
-	var status string
-	if err := conn.QueryRowContext(ctx,
-		`SELECT status FROM multipart_uploads WHERE id = ?`,
-		uploadID,
-	).Scan(&status); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return "", ErrMultipartUploadNotFound
-		}
-		return "", fmt.Errorf("check upload status: %w", err)
+	if err := requireCompletingUpload(ctx, conn, uploadID); err != nil {
+		return "", err
 	}
-	if status != MultipartUploadStatusCompleting {
-		return "", ErrUploadAlreadyClaimed
+	existing, err := loadObjectVersion(ctx, conn, obj.BucketName, obj.Key)
+	if err != nil {
+		return "", err
 	}
-
-	var oldStoragePath string
-	var oldETag sql.NullString
-	err = conn.QueryRowContext(ctx,
-		`SELECT storage_path, etag FROM objects WHERE bucket_name = ? AND key = ?`,
-		obj.BucketName, obj.Key,
-	).Scan(&oldStoragePath, &oldETag)
-
-	objectExists := err == nil
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return "", fmt.Errorf("select existing object: %w", err)
+	if err := checkWritePreconditions(existing, ifMatch, ifNoneMatch); err != nil {
+		return "", err
 	}
-
-	// Check preconditions inside the transaction.
-	if ifMatch != "" || ifNoneMatch != "" {
-		if !objectExists && ifMatch != "" {
-			// S3 returns NoSuchKey when If-Match is set and object doesn't exist.
-			return "", ErrObjectNotFound
-		}
-		if objectExists {
-			etag := oldETag.String
-			if ifMatch != "" && ifMatch != "*" && !etagsEqual(ifMatch, etag) {
-				return "", ErrPreconditionFailed
-			}
-			if ifNoneMatch == "*" {
-				return "", ErrPreconditionFailed
-			}
-			if ifNoneMatch != "" && ifNoneMatch != "*" && etagsEqual(ifNoneMatch, etag) {
-				return "", ErrPreconditionFailed
-			}
-		}
-	}
-
-	const createQ = `
-		INSERT INTO objects (id, bucket_name, key, size, etag, content_type, storage_path, created_at, updated_at,
-			is_multipart, parts_count, checksum_crc32, checksum_crc32c, checksum_crc64nvme, checksum_sha1, checksum_sha256, user_metadata)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,
-			?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(bucket_name, key) DO UPDATE SET
-			id = excluded.id,
-			size = excluded.size,
-			etag = excluded.etag,
-			content_type = excluded.content_type,
-			storage_path = excluded.storage_path,
-			created_at = excluded.created_at,
-			updated_at = excluded.updated_at,
-			is_multipart = excluded.is_multipart,
-			parts_count = excluded.parts_count,
-			checksum_crc32 = excluded.checksum_crc32,
-			checksum_crc32c = excluded.checksum_crc32c,
-			checksum_crc64nvme = excluded.checksum_crc64nvme,
-			checksum_sha1 = excluded.checksum_sha1,
-			checksum_sha256 = excluded.checksum_sha256,
-			user_metadata = excluded.user_metadata`
-
-	if obj.CreatedAt.IsZero() {
-		obj.CreatedAt = time.Now().UTC()
-	}
-	if obj.UpdatedAt.IsZero() {
-		obj.UpdatedAt = obj.CreatedAt
-	}
-	now := obj.CreatedAt.UTC()
-
-	var metaStr *string
-	if len(obj.UserMetadata) > 0 {
-		b, err := json.Marshal(obj.UserMetadata)
-		if err != nil {
-			return "", fmt.Errorf("marshal user metadata: %w", err)
-		}
-		s := string(b)
-		metaStr = &s
-	}
-
-	if _, err := conn.ExecContext(ctx, createQ,
-		obj.ID, obj.BucketName, obj.Key, obj.Size, obj.ETag,
-		obj.ContentType, obj.StoragePath, now, obj.UpdatedAt.UTC(),
-		obj.IsMultipart, obj.PartsCount,
-		nullify(obj.ChecksumCRC32), nullify(obj.ChecksumCRC32C), nullify(obj.ChecksumCRC64NVME),
-		nullify(obj.ChecksumSHA1), nullify(obj.ChecksumSHA256),
-		metaStr,
-	); err != nil {
-		return "", fmt.Errorf("create object: %w", err)
+	if err := upsertObject(ctx, conn, obj); err != nil {
+		return "", err
 	}
 
 	if _, err := conn.ExecContext(ctx,
@@ -509,7 +430,67 @@ func (r *sqliteMultipartUploadRepository) CompleteUpload(ctx context.Context, ob
 		return "", fmt.Errorf("commit complete upload tx: %w", err)
 	}
 	committed = true
-	return oldStoragePath, nil
+	return existing.storagePath, nil
+}
+
+// requireCompletingUpload confirms that this request's claim on the upload
+// still holds.
+func requireCompletingUpload(ctx context.Context, conn *sql.Conn, uploadID string) error {
+	var status MultipartUploadStatus
+	err := conn.QueryRowContext(ctx, `SELECT status FROM multipart_uploads WHERE id = ?`, uploadID).Scan(&status)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrMultipartUploadNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("check upload status: %w", err)
+	}
+	if status != MultipartUploadStatusCompleting {
+		return ErrUploadAlreadyClaimed
+	}
+	return nil
+}
+
+// objectVersion is the stored state of a key that a write may replace.
+type objectVersion struct {
+	exists      bool
+	storagePath string
+	etag        string
+}
+
+func loadObjectVersion(ctx context.Context, conn *sql.Conn, bucketName, key string) (objectVersion, error) {
+	var version objectVersion
+	var etag sql.NullString
+	err := conn.QueryRowContext(ctx,
+		`SELECT storage_path, etag FROM objects WHERE bucket_name = ? AND key = ?`,
+		bucketName, key,
+	).Scan(&version.storagePath, &etag)
+	if errors.Is(err, sql.ErrNoRows) {
+		return objectVersion{}, nil
+	}
+	if err != nil {
+		return objectVersion{}, fmt.Errorf("select existing object: %w", err)
+	}
+	version.exists = true
+	version.etag = etag.String
+	return version, nil
+}
+
+// checkWritePreconditions applies If-Match and If-None-Match to the object a
+// write would replace. S3 returns NoSuchKey when If-Match names a missing key.
+func checkWritePreconditions(existing objectVersion, ifMatch, ifNoneMatch string) error {
+	if !existing.exists {
+		if ifMatch != "" {
+			return ErrObjectNotFound
+		}
+		return nil
+	}
+	if ifMatch != "" && ifMatch != "*" && !etagsEqual(ifMatch, existing.etag) {
+		return ErrPreconditionFailed
+	}
+	if ifNoneMatch == "*" || (ifNoneMatch != "" && etagsEqual(ifNoneMatch, existing.etag)) {
+		return ErrPreconditionFailed
+	}
+	return nil
 }
 
 func (r *sqliteMultipartUploadRepository) ListParts(ctx context.Context, uploadID string) ([]MultipartPart, error) {
@@ -568,7 +549,7 @@ func (r *sqliteMultipartUploadRepository) ListByBucket(ctx context.Context, buck
 
 	var uploads []MultipartUpload
 	for rows.Next() {
-		u, err := scanMultipartUploadRow(rows)
+		u, err := scanMultipartUpload(rows)
 		if err != nil {
 			return nil, false, "", "", fmt.Errorf("list multipart uploads by bucket scan: %w", err)
 		}
@@ -589,7 +570,7 @@ func (r *sqliteMultipartUploadRepository) ListByBucket(ctx context.Context, buck
 	return uploads, false, "", "", nil
 }
 
-func scanMultipartUpload(row *sql.Row) (*MultipartUpload, error) {
+func scanMultipartUpload(row rowScanner) (*MultipartUpload, error) {
 	var u MultipartUpload
 	var createdAt, statusUpdatedAt string
 	var metaStr sql.NullString
@@ -602,34 +583,6 @@ func scanMultipartUpload(row *sql.Row) (*MultipartUpload, error) {
 		return nil, fmt.Errorf("scan multipart upload: %w", err)
 	}
 
-	u.CreatedAt, err = parseTimestamp(createdAt)
-	if err != nil {
-		return nil, err
-	}
-	u.StatusUpdatedAt, err = parseTimestamp(statusUpdatedAt)
-	if err != nil {
-		return nil, err
-	}
-
-	if metaStr.Valid && metaStr.String != "" {
-		if err := json.Unmarshal([]byte(metaStr.String), &u.UserMetadata); err != nil {
-			return nil, fmt.Errorf("unmarshal user metadata: %w", err)
-		}
-	}
-
-	return &u, nil
-}
-
-func scanMultipartUploadRow(rows *sql.Rows) (*MultipartUpload, error) {
-	var u MultipartUpload
-	var createdAt, statusUpdatedAt string
-	var metaStr sql.NullString
-
-	if err := rows.Scan(&u.ID, &u.BucketName, &u.Key, &u.ContentType, &u.Status, &createdAt, &statusUpdatedAt, &u.ChecksumAlgorithm, &metaStr); err != nil {
-		return nil, fmt.Errorf("scan multipart upload row: %w", err)
-	}
-
-	var err error
 	u.CreatedAt, err = parseTimestamp(createdAt)
 	if err != nil {
 		return nil, err
@@ -674,7 +627,7 @@ func scanMultipartPartRow(rows *sql.Rows) (*MultipartPart, error) {
 	return &p, nil
 }
 
-func validMultipartUploadStatus(status string) bool {
+func validMultipartUploadStatus(status MultipartUploadStatus) bool {
 	switch status {
 	case MultipartUploadStatusActive, MultipartUploadStatusCompleting, MultipartUploadStatusAborted:
 		return true

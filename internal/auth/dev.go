@@ -5,6 +5,8 @@ import (
 	"net"
 	"net/http"
 	"strings"
+
+	"github.com/i-got-this-faa/fbs/internal/iam"
 )
 
 func ValidateDevMode(httpAddr string, devMode bool) error {
@@ -32,7 +34,7 @@ func (d *DevAuthenticator) Authenticate(_ *http.Request) (Principal, error) {
 		UserID:      "dev-user",
 		DisplayName: "Development User",
 		AccessKeyID: "dev",
-		Role:        "admin",
+		Role:        iam.RoleAdmin,
 		DevMode:     true,
 	}, nil
 }

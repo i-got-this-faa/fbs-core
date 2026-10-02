@@ -5,12 +5,13 @@ import (
 	"strings"
 
 	"github.com/i-got-this-faa/fbs/internal/auth"
+	"github.com/i-got-this-faa/fbs/internal/iam"
 )
 
 // DecisionRequest is the input to authorization evaluation.
 type DecisionRequest struct {
 	Principal auth.Principal
-	Action    string
+	Action    iam.Action
 	Bucket    string
 	ObjectKey string
 	// ListPrefix is the list API prefix query value. Used only for s3:ListBucket.
@@ -38,17 +39,17 @@ func (e *Evaluator) Allow(ctx context.Context, req DecisionRequest) (bool, error
 	if strings.TrimSpace(req.Principal.UserID) == "" {
 		return false, nil
 	}
-	if strings.TrimSpace(req.Action) == "" {
+	if req.Action == "" {
 		return false, nil
 	}
 
 	// 1. System admin short-circuit.
-	if req.Principal.Role == "admin" {
+	if req.Principal.Role == iam.RoleAdmin {
 		return true, nil
 	}
 
 	// CreateBucket: any authenticated principal may create; not grant-based.
-	if req.Action == ActionCreateBucket {
+	if req.Action == iam.ActionCreateBucket {
 		return true, nil
 	}
 
@@ -63,7 +64,7 @@ func (e *Evaluator) Allow(ctx context.Context, req DecisionRequest) (bool, error
 	}
 
 	// DeleteBucket is never grantable.
-	if req.Action == ActionDeleteBucket {
+	if req.Action == iam.ActionDeleteBucket {
 		return false, nil
 	}
 
@@ -93,11 +94,12 @@ func (e *Evaluator) Allow(ctx context.Context, req DecisionRequest) (bool, error
 	return false, nil
 }
 
+// grantMatches applies the grant's key prefix. An empty prefix covers the whole
+// bucket. A ListBucket request may narrow into the granted subtree but not
+// widen outside it, so an empty list prefix needs an empty grant prefix.
 func grantMatches(grant Grant, req DecisionRequest) bool {
-	switch req.Action {
-	case ActionListBucket:
-		return ListPrefixCovered(grant.KeyPrefix, req.ListPrefix)
-	default:
-		return PrefixMatches(grant.KeyPrefix, req.ObjectKey)
+	if req.Action == iam.ActionListBucket {
+		return strings.HasPrefix(req.ListPrefix, grant.KeyPrefix)
 	}
+	return strings.HasPrefix(req.ObjectKey, grant.KeyPrefix)
 }

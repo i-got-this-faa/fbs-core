@@ -72,7 +72,7 @@ func (h *ObjectHandlers) CreateBucket(w http.ResponseWriter, r *http.Request) {
 		WriteS3Error(w, r, http.StatusInternalServerError, codeInternalError, messageInternalError)
 		return
 	}
-	h.recordActivity(r, "create_bucket", bucketName, "", 0, "")
+	h.recordActivity(r, metadata.ActivityCreateBucket, bucketName, "", 0, "")
 
 	w.Header().Set("Location", "/"+bucketName)
 	w.WriteHeader(http.StatusOK)
