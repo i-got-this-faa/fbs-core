@@ -124,8 +124,9 @@ func (e *engine) copyParts(ctx context.Context, w io.Writer, partPaths []string)
 }
 
 // writeDurably streams fill into a new file at tempPath, syncs it, and renames
-// it to finalPath. On any failure it removes tempPath and leaves finalPath
-// untouched, so a reader never sees a partial file.
+// it to finalPath, then syncs finalPath's directory so the rename survives a
+// crash. On any failure it removes tempPath and leaves finalPath untouched, so
+// a reader never sees a partial file.
 func writeDurably(tempPath, finalPath string, fill func(io.Writer) (int64, error)) (int64, error) {
 	file, err := os.Create(tempPath)
 	if err != nil {
@@ -150,7 +151,24 @@ func writeDurably(tempPath, finalPath string, fill func(io.Writer) (int64, error
 		_ = os.Remove(tempPath)
 		return 0, err
 	}
+	if err := syncDir(filepath.Dir(finalPath)); err != nil {
+		_ = os.Remove(finalPath)
+		return 0, fmt.Errorf("sync directory: %w", err)
+	}
 	return written, nil
+}
+
+// syncDir makes directory entry changes (create, rename) in dir durable.
+func syncDir(dir string) error {
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	syncErr := d.Sync()
+	if closeErr := d.Close(); syncErr == nil {
+		syncErr = closeErr
+	}
+	return syncErr
 }
 
 func copyWithContext(ctx context.Context, dst io.Writer, src io.Reader) (int64, error) {

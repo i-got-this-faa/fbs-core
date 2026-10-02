@@ -38,7 +38,7 @@ func (b *BearerAuthenticator) Authenticate(r *http.Request) (Principal, error) {
 		if errors.Is(err, metadata.ErrUserNotFound) {
 			return Principal{}, ErrInvalidCredentials
 		}
-		return Principal{}, ErrInternal
+		return Principal{}, internalError(err)
 	}
 
 	if !verifySecret(secret, user.SecretHash) {
