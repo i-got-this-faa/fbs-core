@@ -1,12 +1,25 @@
 package auth
 
 import (
+	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/i-got-this-faa/fbs/internal/iam"
 )
 
 type UnauthorizedResponder func(w http.ResponseWriter, r *http.Request, err error)
+
+// LogInternalErrors wraps onError so that internal authentication failures are
+// logged with their cause before onError writes its generic response.
+func LogInternalErrors(logger *slog.Logger, onError UnauthorizedResponder) UnauthorizedResponder {
+	return func(w http.ResponseWriter, r *http.Request, err error) {
+		if errors.Is(err, ErrInternal) {
+			logger.Error("authentication failed", "error", err, "method", r.Method, "path", r.URL.Path)
+		}
+		onError(w, r, err)
+	}
+}
 
 func RequireAuthentication(authenticator Authenticator, onError UnauthorizedResponder) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {

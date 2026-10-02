@@ -393,6 +393,9 @@ func TestSigV4AuthInternalError(t *testing.T) {
 	if !errors.Is(err, ErrInternal) {
 		t.Fatalf("expected ErrInternal, got %v", err)
 	}
+	if !strings.Contains(err.Error(), "database connection lost") {
+		t.Fatalf("expected the repository cause in %v", err)
+	}
 }
 
 func TestSigV4ChainAuthenticator(t *testing.T) {

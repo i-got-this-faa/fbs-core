@@ -89,7 +89,7 @@ func (s *SigV4Authenticator) authenticateHeader(r *http.Request) (Principal, err
 		if errors.Is(err, metadata.ErrUserNotFound) {
 			return Principal{}, ErrInvalidCredentials
 		}
-		return Principal{}, ErrInternal
+		return Principal{}, internalError(err)
 	}
 
 	if !user.IsActive {
@@ -174,7 +174,7 @@ func (s *SigV4Authenticator) authenticateQuery(r *http.Request) (Principal, erro
 		if errors.Is(err, metadata.ErrUserNotFound) {
 			return Principal{}, ErrInvalidCredentials
 		}
-		return Principal{}, ErrInternal
+		return Principal{}, internalError(err)
 	}
 
 	if !user.IsActive {
@@ -515,7 +515,7 @@ func SignRequest(r *http.Request, accessKeyID, secretKey, region, service string
 	SignRequestAt(r, accessKeyID, secretKey, region, service, signedHeaders, payloadHash, time.Now().UTC())
 }
 
-// SignRequestAt signs r with SigV4 as of now.
+// SignRequestAt signs r with SigV4 using now as the request timestamp.
 func SignRequestAt(r *http.Request, accessKeyID, secretKey, region, service string, signedHeaders []string, payloadHash string, now time.Time) {
 	if payloadHash == "" {
 		payloadHash = unsignedPayload

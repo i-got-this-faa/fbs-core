@@ -18,32 +18,34 @@ import (
 )
 
 func newRouter(cfg config.Config, logger *slog.Logger, app *app) http.Handler {
+	managementAuthError := auth.LogInternalErrors(logger, management.WriteAuthError)
+	s3AuthError := auth.LogInternalErrors(logger, writeS3AuthError)
 	return httpapi.NewRouter(cfg, logger, func(r chi.Router) {
 		s3.RegisterPublicReadRoutes(r, app.objects)
 		setup.RegisterRoutes(r, app.setup)
 		r.Route("/api/management", func(managementRoutes chi.Router) {
-			managementRoutes.Use(auth.RequireAuthentication(app.authChain, management.WriteAuthError))
+			managementRoutes.Use(auth.RequireAuthentication(app.authChain, managementAuthError))
 			// Grant routes: authenticated admin or bucket owner (enforced in handlers).
 			management.RegisterGrantRoutes(managementRoutes, app.management)
 			managementRoutes.Group(func(adminRoutes chi.Router) {
-				adminRoutes.Use(auth.RequireRole(iam.RoleAdmin, management.WriteAuthError))
+				adminRoutes.Use(auth.RequireRole(iam.RoleAdmin, managementAuthError))
 				management.RegisterAdminRoutes(adminRoutes, app.management)
 			})
 		})
 		r.Group(func(s3Routes chi.Router) {
 			s3Routes.Use(appmiddleware.S3Headers)
-			s3Routes.Use(auth.RequireAuthentication(app.authChain, writeS3AuthError))
+			s3Routes.Use(auth.RequireAuthentication(app.authChain, s3AuthError))
 			s3.RegisterBucketRoutes(s3Routes, app.objects)
 			s3.RegisterObjectReadRoutes(s3Routes, app.objects)
 		})
 		r.Group(func(s3Routes chi.Router) {
 			s3Routes.Use(appmiddleware.S3Headers)
-			s3Routes.Use(auth.RequireAuthentication(app.authChain, writeS3AuthError))
+			s3Routes.Use(auth.RequireAuthentication(app.authChain, s3AuthError))
 			s3.RegisterObjectMutationRoutes(s3Routes, app.objects)
 		})
 		// registerExtraRoutes is a no-op unless built with -tags testendpoints,
 		// which compiles in the /_health/auth debug endpoint.
-		registerExtraRoutes(r, app.authChain, writeJSONAuthError)
+		registerExtraRoutes(r, app.authChain, auth.LogInternalErrors(logger, writeJSONAuthError))
 	})
 }
 

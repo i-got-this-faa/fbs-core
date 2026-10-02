@@ -721,6 +721,6 @@ func (h *Handlers) recordActivity(r *http.Request, action metadata.ActivityActio
 		CreatedAt:  time.Now().UTC(),
 	})
 	if err != nil {
-		h.Logger.Error("record object activity", "error", err, "action", action, "bucket", bucketName, "key", key)
+		h.logger().Error("record object activity", "error", err, "action", action, "bucket", bucketName, "key", key)
 	}
 }
