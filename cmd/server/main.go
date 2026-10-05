@@ -79,21 +79,7 @@ func main() {
 	userRepo := metadata.NewUserRepository(db)
 	sigv4Repo := metadata.NewSigV4UserRepository(db)
 	bootstrapRepo := metadata.NewBootstrapRepository(db)
-	var authenticators []auth.Authenticator
-	if cfg.DevMode {
-		authenticators = append(authenticators, &auth.DevAuthenticator{})
-	}
-	authenticators = append(authenticators, &auth.BearerAuthenticator{Repo: userRepo})
-	authenticators = append(authenticators, &auth.SigV4Authenticator{Repo: sigv4Repo})
-	authChain := &auth.ChainAuthenticator{Authenticators: authenticators}
-
-	var managementAuthenticators []auth.Authenticator
-	if cfg.DevMode {
-		managementAuthenticators = append(managementAuthenticators, &auth.DevAuthenticator{})
-	}
-	managementAuthenticators = append(managementAuthenticators, &auth.BearerAuthenticator{Repo: userRepo})
-	managementAuthenticators = append(managementAuthenticators, &auth.SigV4Authenticator{Repo: sigv4Repo})
-	managementAuthChain := &auth.ChainAuthenticator{Authenticators: managementAuthenticators}
+	authChain := newAuthChain(cfg.DevMode, userRepo, sigv4Repo)
 
 	rawBucketRepo := metadata.NewBucketRepository(db)
 	bucketRepo := rawBucketRepo
@@ -162,7 +148,7 @@ func main() {
 		s3.RegisterPublicReadRoutes(r, objectHandlers)
 		setup.RegisterRoutes(r, setupHandlers)
 		r.Route("/api/management", func(managementRoutes chi.Router) {
-			managementRoutes.Use(auth.RequireAuthentication(managementAuthChain, management.WriteAuthError))
+			managementRoutes.Use(auth.RequireAuthentication(authChain, management.WriteAuthError))
 			// Grant routes: authenticated admin or bucket owner (enforced in handlers).
 			management.RegisterGrantRoutes(managementRoutes, managementHandlers)
 			managementRoutes.Group(func(adminRoutes chi.Router) {
@@ -225,6 +211,20 @@ func main() {
 			os.Exit(1)
 		}
 	}
+}
+
+// newAuthChain builds the authenticator chain shared by the S3 and Management
+// APIs. The dev authenticator, when enabled, runs first so it short-circuits.
+func newAuthChain(devMode bool, users metadata.UserRepository, sigv4Users metadata.SigV4UserRepository) *auth.ChainAuthenticator {
+	var authenticators []auth.Authenticator
+	if devMode {
+		authenticators = append(authenticators, &auth.DevAuthenticator{})
+	}
+	authenticators = append(authenticators,
+		&auth.BearerAuthenticator{Repo: users},
+		&auth.SigV4Authenticator{Repo: sigv4Users},
+	)
+	return &auth.ChainAuthenticator{Authenticators: authenticators}
 }
 
 func startupSetupURL(cfg config.Config) string {

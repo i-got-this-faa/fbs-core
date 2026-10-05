@@ -58,11 +58,6 @@ func WriteAuthError(w http.ResponseWriter, _ *http.Request, err error) {
 	}
 }
 
-func setJSONHeaders(w http.ResponseWriter) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	setNoStoreHeaders(w)
-}
-
 func setNoStoreHeaders(w http.ResponseWriter) {
 	responses.WithNoStore(w)
 }
