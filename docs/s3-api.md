@@ -68,6 +68,8 @@ Completion validates:
 
 Multipart ETags use the standard MD5-of-part-MD5s format with a `-{part_count}` suffix.
 
+Completion supports `If-Match` and `If-None-Match` against the current object. A failed condition returns `412 PreconditionFailed`, or `404 NoSuchKey` when `If-Match` names a missing key. The upload remains active with its parts intact, and the existing object is unchanged. Clients can abort the upload or retry completion once the condition is satisfied. Each retry checks the current object again; failed assembly files are discarded.
+
 ## Checksums
 
 Put object and upload part compute MD5 while streaming. The computed MD5 hex string is stored as the object or part ETag.

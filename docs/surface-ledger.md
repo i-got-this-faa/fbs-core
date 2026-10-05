@@ -66,3 +66,20 @@ Target behavior: a failed batch grant request changes nothing; every management 
 | Connection modes | applies | Bearer, SigV4, dev mode; `testendpoints` build tag | Dev principal uses `iam.RoleAdmin`; tagged build compiles and passes staticcheck | `go build -tags testendpoints`; staticcheck with tag | proved |
 | Tests | applies | `internal/{iam,metadata,management,s3,storage,authz}`, `cmd/server`, `migrations` | Add batch, atomicity, 500-logging, part-selection, precondition, and durable-write tests; remove the grantable-action sync test and `TestPrefixMatches`, whose subjects no longer exist | `go test -race ./...`; `go vet`; staticcheck; deadcode | proved |
 | Documents | applies | `README.md`, `docs/development.md`, `docs/management-api.md`, `docs/operations.md`, `docs/README.md` | Package lists, the "add an S3 action" steps, grant atomicity, 500 troubleshooting, lint commands; move the security audit and this ledger into `docs/` | documentation review | proved |
+
+## Issue #38: recover failed conditional multipart completion
+
+Target behavior: conditional completion failures preserve the upload and parts for retry or abort, without changing the existing object.
+
+| Surface | Applies | Evidence | Change | Check | State |
+|---|---|---|---|---|---|
+| Entry points | applies | `internal/s3/multipart_complete.go` | Release the claim after `412 PreconditionFailed` and `404 NoSuchKey` | Six router regression cases; twelve live HTTP cases | proved |
+| Clients | applies | S3 completion, part upload, and abort requests | Preserve request and error contracts; restore use of the upload ID after failure | Live Bearer and SigV4 requests | proved |
+| Providers | applies | SQLite completion transaction; disk assembly and part files; metadata cache | Reuse rollback, deferred claim release, and failed-assembly cleanup | Assert active status, retained parts, unchanged object, and no assembly file leaks | proved |
+| Contracts | applies | Multipart status and S3 error responses | Keep 412/404 status and XML codes; return failed claims to active | Regression tests assert status and error code | proved |
+| Reverse state | applies | Repeat failure, part replacement, completion retry, abort | Retain the upload until successful completion or abort | Repeat each failure twice; verify both recovery paths remove metadata and part files | proved |
+| Connection modes | applies | Cached object reads; Bearer and SigV4 authentication | Shared completion handler fixes both authenticated modes | Running binary with cache enabled | proved |
+| Tests | applies | `internal/s3/multipart_conditional_test.go`; existing metadata and storage tests | Add six recovery cases that fail before the fix | Focused tests; full race suite; vet; both staticcheck builds; deadcode; both server builds | proved |
+| Documents | applies | `docs/s3-api.md`; `docs/storage-and-metadata.md` | Document conditional errors and retained upload state | Documentation review | proved |
+
+Production deployment, live AWS parity, and the full ceph compatibility suite were not tested for this fix. Client UI changes and device tests do not apply to this backend state correction.
