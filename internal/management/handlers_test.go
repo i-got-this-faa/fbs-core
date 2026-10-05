@@ -37,6 +37,7 @@ type managementTestEnv struct {
 	memberUserID string
 	memberSigV4  auth.SigV4Credentials
 	storage      storage.DiskEngine
+	logs         *bytes.Buffer
 }
 
 func TestManagementMetrics(t *testing.T) {
@@ -801,6 +802,30 @@ func TestManagementPublicURLWorksAgainstPublicRoute(t *testing.T) {
 	}
 }
 
+func TestManagementInternalErrorLogsCause(t *testing.T) {
+	t.Parallel()
+
+	env := newManagementTestEnv(t)
+	if _, err := env.db.Exec(`DROP TABLE object_activity`); err != nil {
+		t.Fatalf("drop activity table: %v", err)
+	}
+
+	resp := env.do(t, http.MethodGet, "/api/management/activity", env.adminToken, nil)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", resp.StatusCode)
+	}
+	if body := string(readBody(t, resp)); strings.Contains(body, "object_activity") {
+		t.Fatalf("500 body leaks the internal cause: %s", body)
+	}
+	logged := env.logs.String()
+	for _, want := range []string{"failed to list activity", "no such table: object_activity", "path=/api/management/activity"} {
+		if !strings.Contains(logged, want) {
+			t.Fatalf("log %q does not contain %q", logged, want)
+		}
+	}
+}
+
 func newManagementTestEnv(t *testing.T) managementTestEnv {
 	t.Helper()
 	return newManagementTestEnvWithConfig(t, config.Default())
@@ -845,6 +870,7 @@ func newManagementTestEnvWithConfig(t *testing.T, cfg config.Config) managementT
 	}
 	grantRepo := metadata.NewGrantRepository(db)
 	shareLinkRepo := metadata.NewShareLinkRepository(db)
+	logs := &bytes.Buffer{}
 	handlers := &management.Handlers{
 		Management:       metadata.NewManagementRepository(db),
 		Buckets:          bucketRepo,
@@ -856,6 +882,7 @@ func newManagementTestEnvWithConfig(t *testing.T, cfg config.Config) managementT
 		Config:           cfg,
 		PublicReadSigner: signer,
 		ShareLinks:       shareLinkRepo,
+		Logger:           slog.New(slog.NewTextHandler(logs, nil)),
 	}
 	authChain := &auth.ChainAuthenticator{
 		Authenticators: []auth.Authenticator{
@@ -901,6 +928,7 @@ func newManagementTestEnvWithConfig(t *testing.T, cfg config.Config) managementT
 		memberUserID: memberUser.ID,
 		memberSigV4:  memberSigV4,
 		storage:      disk,
+		logs:         logs,
 	}
 }
 

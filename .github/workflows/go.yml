@@ -52,3 +52,30 @@ jobs:
 
       - name: Run tests with race detector
         run: go test -race ./...
+
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run staticcheck
+        run: |
+          go run honnef.co/go/tools/cmd/staticcheck@v0.8.1 ./...
+          go run honnef.co/go/tools/cmd/staticcheck@v0.8.1 -tags testendpoints ./...
+
+      # deadcode exits 0 even when it finds unreachable functions, so fail on any output.
+      - name: Check for unreachable code
+        run: |
+          unreachable="$(go run golang.org/x/tools/cmd/deadcode@v0.50.0 -test ./...)"
+          if [ -n "$unreachable" ]; then
+            echo "$unreachable"
+            exit 1
+          fi

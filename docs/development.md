@@ -3,18 +3,19 @@
 ## Repository Layout
 
 ```text
-cmd/server/              server entrypoint and server-level tests
-internal/auth/           authentication and authorization
+cmd/server/              entrypoint, dependency wiring, routing, graceful shutdown, process tests
+internal/auth/           authentication (Bearer, SigV4, dev mode) and request principals
+internal/authz/          authorization evaluator (admin, bucket owner, resource grants)
 internal/config/         config loading and validation
 internal/http/           router and HTTP middleware
+internal/iam/            shared Role and Action types (imports no internal package)
 internal/management/     admin JSON API
 internal/metadata/       SQLite repositories and cache wrappers
-internal/objectops/      shared object operation helpers
+internal/objectops/      object operations shared by the S3 and management APIs
 internal/publicread/     signed public read URL support
 internal/responses/      shared JSON response helpers
 internal/s3/             S3-compatible API handlers
-internal/s3compat/       compatibility constants
-internal/server/         HTTP server wrapper
+internal/s3compat/       S3 region constant shared by setup, management, and S3
 internal/setup/          first-start bootstrap API
 internal/storage/        local disk storage engine
 migrations/              SQLite migrations
@@ -36,6 +37,13 @@ Run all tests:
 
 ```bash
 go test ./...
+```
+
+CI also runs these lint checks. Run them before you push:
+
+```bash
+go run honnef.co/go/tools/cmd/staticcheck@v0.8.1 ./...
+go run golang.org/x/tools/cmd/deadcode@v0.50.0 -test ./...   # must print nothing
 ```
 
 ### External S3 compatibility suite (ceph/s3-tests)
@@ -84,8 +92,8 @@ The test suite is package-focused and covers:
 
 When implementing a new S3 data-plane operation:
 
-1. Map it to an existing action in `internal/authz/actions.go`, or add a new action there and in `plan/access-control/access-control.md`.
-2. If the action should be grantable, add it to `GrantableActions` and to metadata grantable validation.
+1. Map it to an existing `iam.Action` in `internal/iam/iam.go`, or add a new action there and in `plan/access-control/access-control.md`.
+2. If the action should be grantable, add it to `grantableActions` in the same file. Metadata validation and the Management API read that one list.
 3. Call the shared authz evaluator from the handler with the correct action, bucket, object key, and list prefix.
 4. Do not invent a private owner-only boolean path for normal bucket/object ops.
 

@@ -11,7 +11,8 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/i-got-this-faa/fbs/internal/authz"
+
+	"github.com/i-got-this-faa/fbs/internal/iam"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
 )
 
@@ -90,7 +91,7 @@ func (h *ObjectHandlers) ListObjectsV2(w http.ResponseWriter, r *http.Request) {
 		WriteS3Error(w, r, http.StatusBadRequest, codeInvalidRequest, messageInvalidRequest)
 		return
 	}
-	if !h.ensureBucketAction(w, r, bucketName, authz.ActionListBucket, "", params.prefix) {
+	if !h.ensureBucketAction(w, r, bucketName, iam.ActionListBucket, "", params.prefix) {
 		return
 	}
 

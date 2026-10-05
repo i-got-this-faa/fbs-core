@@ -10,7 +10,7 @@ import (
 	"uuid"
 
 	"github.com/i-got-this-faa/fbs/internal/auth"
-	"github.com/i-got-this-faa/fbs/internal/authz"
+	"github.com/i-got-this-faa/fbs/internal/iam"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
 )
 
@@ -40,9 +40,9 @@ func TestGranteeCanGetObjectWithGrant(t *testing.T) {
 	if env.grants == nil {
 		t.Fatal("grants repo missing")
 	}
-	_, _, err = env.grants.CreateIdempotent(context.Background(), &metadata.Grant{
+	err = env.grants.Create(context.Background(), &metadata.Grant{
 		ID: uuid.New().String(), BucketName: "other-bucket", GranteeUserID: "member-user",
-		Action: authz.ActionGetObject, IsActive: true,
+		Action: iam.ActionGetObject, IsActive: true,
 		CreatedAt: now, UpdatedAt: now,
 	})
 	if err != nil {
@@ -76,9 +76,9 @@ func TestListBucketsIncludesGrantedBuckets(t *testing.T) {
 	now := time.Now().UTC()
 	// ListBuckets visibility requires any active grant (not specifically
 	// s3:ListBucket). GetObject is enough to surface the bucket in the listing.
-	_, _, err := env.grants.CreateIdempotent(context.Background(), &metadata.Grant{
+	err := env.grants.Create(context.Background(), &metadata.Grant{
 		ID: uuid.New().String(), BucketName: "other-bucket", GranteeUserID: "member-user",
-		Action: authz.ActionGetObject, IsActive: true,
+		Action: iam.ActionGetObject, IsActive: true,
 		CreatedAt: now, UpdatedAt: now,
 	})
 	if err != nil {
@@ -134,9 +134,9 @@ func TestDeleteObjectsPartialGrantReportsPerKeyErrors(t *testing.T) {
 
 	now := time.Now().UTC()
 	// Relationship to the bucket via a delete grant limited to uploads/.
-	_, _, err := env.grants.CreateIdempotent(context.Background(), &metadata.Grant{
+	err := env.grants.Create(context.Background(), &metadata.Grant{
 		ID: uuid.New().String(), BucketName: "other-bucket", GranteeUserID: "member-user",
-		Action: authz.ActionDeleteObject, KeyPrefix: "uploads/", IsActive: true,
+		Action: iam.ActionDeleteObject, KeyPrefix: "uploads/", IsActive: true,
 		CreatedAt: now, UpdatedAt: now,
 	})
 	if err != nil {
@@ -189,8 +189,8 @@ func TestPrefixLimitedPutDeniedOutsidePrefix(t *testing.T) {
 	})
 
 	now := time.Now().UTC()
-	for _, action := range []string{authz.ActionPutObject, authz.ActionListBucket} {
-		_, _, err := env.grants.CreateIdempotent(context.Background(), &metadata.Grant{
+	for _, action := range []iam.Action{iam.ActionPutObject, iam.ActionListBucket} {
+		err := env.grants.Create(context.Background(), &metadata.Grant{
 			ID: uuid.New().String(), BucketName: "other-bucket", GranteeUserID: "member-user",
 			Action: action, KeyPrefix: "uploads/", IsActive: true,
 			CreatedAt: now, UpdatedAt: now,

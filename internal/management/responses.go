@@ -2,6 +2,7 @@ package management
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -58,9 +59,19 @@ func WriteAuthError(w http.ResponseWriter, _ *http.Request, err error) {
 	}
 }
 
-func setJSONHeaders(w http.ResponseWriter) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	setNoStoreHeaders(w)
+// logger returns h.Logger, or the default logger when none is configured.
+func (h *Handlers) logger() *slog.Logger {
+	if h.Logger != nil {
+		return h.Logger
+	}
+	return slog.Default()
+}
+
+// internalError logs why a request failed and returns a generic 500 so that
+// internal details do not reach the client.
+func (h *Handlers) internalError(w http.ResponseWriter, r *http.Request, message string, err error) {
+	h.logger().Error(message, "error", err, "method", r.Method, "path", r.URL.Path)
+	writeError(w, http.StatusInternalServerError, errorCodeInternal, message)
 }
 
 func setNoStoreHeaders(w http.ResponseWriter) {

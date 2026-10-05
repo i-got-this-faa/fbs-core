@@ -81,7 +81,7 @@ func (r *sqliteBucketRepository) List(ctx context.Context) ([]Bucket, error) {
 
 	var buckets []Bucket
 	for rows.Next() {
-		b, err := scanBucketRow(rows)
+		b, err := scanBucket(rows)
 		if err != nil {
 			return nil, fmt.Errorf("list buckets scan: %w", err)
 		}
@@ -110,7 +110,7 @@ func (r *sqliteBucketRepository) ListByOwner(ctx context.Context, ownerID string
 
 	var buckets []Bucket
 	for rows.Next() {
-		b, err := scanBucketRow(rows)
+		b, err := scanBucket(rows)
 		if err != nil {
 			return nil, fmt.Errorf("list buckets by owner scan: %w", err)
 		}
@@ -150,7 +150,7 @@ func (r *sqliteBucketRepository) ListByNames(ctx context.Context, names []string
 
 	var buckets []Bucket
 	for rows.Next() {
-		b, err := scanBucketRow(rows)
+		b, err := scanBucket(rows)
 		if err != nil {
 			return nil, fmt.Errorf("list buckets by names scan: %w", err)
 		}
@@ -200,7 +200,7 @@ func (r *sqliteBucketRepository) Delete(ctx context.Context, name string) error 
 }
 
 // scanBucket scans a single *sql.Row into a Bucket.
-func scanBucket(row *sql.Row) (*Bucket, error) {
+func scanBucket(row rowScanner) (*Bucket, error) {
 	var b Bucket
 	var createdAt string
 
@@ -221,19 +221,3 @@ func scanBucket(row *sql.Row) (*Bucket, error) {
 }
 
 // scanBucketRow scans a *sql.Rows (multi-row query) into a Bucket.
-func scanBucketRow(rows *sql.Rows) (*Bucket, error) {
-	var b Bucket
-	var createdAt string
-
-	if err := rows.Scan(&b.Name, &b.OwnerID, &createdAt); err != nil {
-		return nil, fmt.Errorf("scan bucket row: %w", err)
-	}
-
-	var err error
-	b.CreatedAt, err = parseTimestamp(createdAt)
-	if err != nil {
-		return nil, err
-	}
-
-	return &b, nil
-}

@@ -199,3 +199,22 @@ func TestManagementShareLinkServesAndRevokes(t *testing.T) {
 		t.Fatalf("revoked share link status = %d, want 404", resp.StatusCode)
 	}
 }
+
+func TestManagementShareLinkDatabaseFailureLogsCause(t *testing.T) {
+	t.Parallel()
+
+	env := newManagementTestEnv(t)
+	if _, err := env.db.Exec(`DROP TABLE share_links`); err != nil {
+		t.Fatalf("drop share links: %v", err)
+	}
+	resp := env.do(t, http.MethodGet, shareLinksPath, env.adminToken, nil)
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("list status = %d, want 500", resp.StatusCode)
+	}
+	if body := string(readBody(t, resp)); strings.Contains(body, "no such table") {
+		t.Fatalf("response leaks internal error: %s", body)
+	}
+	if logs := env.logs.String(); !strings.Contains(logs, "no such table") || !strings.Contains(logs, "path="+shareLinksPath) {
+		t.Fatalf("missing database cause or request path in log: %s", logs)
+	}
+}

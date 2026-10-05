@@ -8,6 +8,7 @@ import (
 	"uuid"
 
 	"github.com/i-got-this-faa/fbs/internal/auth"
+	"github.com/i-got-this-faa/fbs/internal/iam"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
 )
 
@@ -25,7 +26,7 @@ func (e objectTestEnv) mustCreateShareLink(t *testing.T, link metadata.ShareLink
 	}
 }
 
-func (e objectTestEnv) mustCreateUser(t *testing.T, role string) *metadata.User {
+func (e objectTestEnv) mustCreateUser(t *testing.T, role iam.Role) *metadata.User {
 	t.Helper()
 	_, _, user, err := auth.CreateBearerToken(context.Background(), e.users, "Share Creator", role)
 	if err != nil {
@@ -173,7 +174,7 @@ func TestShareLinkRequiresCreatorReadAccess(t *testing.T) {
 	assertShareLinkNotFound(t, env, "/s/bymember")
 
 	now := time.Now().UTC()
-	if err := env.grants.Create(context.Background(), &metadata.Grant{
+	grant := &metadata.Grant{
 		ID:            uuid.New().String(),
 		BucketName:    env.bucket,
 		GranteeUserID: member.ID,
@@ -181,12 +182,18 @@ func TestShareLinkRequiresCreatorReadAccess(t *testing.T) {
 		IsActive:      true,
 		CreatedAt:     now,
 		UpdatedAt:     now,
-	}); err != nil {
+	}
+	if err := env.grants.Create(context.Background(), grant); err != nil {
 		t.Fatalf("create grant: %v", err)
 	}
 	if resp := env.do(t, http.MethodGet, "/s/bymember", "", nil); resp.Code != http.StatusOK {
 		t.Fatalf("granted member link status = %d, want 200", resp.Code)
 	}
+	grant.IsActive = false
+	if err := env.grants.Update(context.Background(), grant); err != nil {
+		t.Fatalf("revoke grant: %v", err)
+	}
+	assertShareLinkNotFound(t, env, "/s/bymember")
 }
 
 func TestShareLinkRouteCannotShadowABucket(t *testing.T) {

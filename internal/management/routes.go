@@ -35,10 +35,3 @@ func RegisterGrantRoutes(r chi.Router, h *Handlers) {
 	r.Delete("/buckets/{bucket}/grants/{grantID}", h.DeleteBucketGrant)
 	r.Post("/buckets/{bucket}/transfer-ownership", h.TransferBucketOwnership)
 }
-
-// RegisterRoutes registers all management routes under a single router.
-// Prefer RegisterAdminRoutes + RegisterGrantRoutes when role middleware differs.
-func RegisterRoutes(r chi.Router, h *Handlers) {
-	RegisterGrantRoutes(r, h)
-	RegisterAdminRoutes(r, h)
-}

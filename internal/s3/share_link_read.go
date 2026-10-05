@@ -7,6 +7,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/i-got-this-faa/fbs/internal/auth"
 	"github.com/i-got-this-faa/fbs/internal/authz"
+	"github.com/i-got-this-faa/fbs/internal/iam"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
 )
 
@@ -96,7 +97,7 @@ func (h *ObjectHandlers) creatorCanRead(r *http.Request, link *metadata.ShareLin
 
 	return h.evaluator().Allow(r.Context(), authz.DecisionRequest{
 		Principal:     auth.Principal{UserID: creator.ID, Role: creator.Role},
-		Action:        authz.ActionGetObject,
+		Action:        iam.ActionGetObject,
 		Bucket:        link.BucketName,
 		ObjectKey:     link.ObjectKey,
 		BucketOwnerID: bucket.OwnerID,

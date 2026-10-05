@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/i-got-this-faa/fbs/internal/iam"
 )
 
 // User represents a row in the users table.
@@ -16,7 +18,7 @@ type User struct {
 	SecretHash       string
 	SigV4AccessKeyID string
 	SigV4SecretKey   string
-	Role             string
+	Role             iam.Role
 	IsActive         bool
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
@@ -217,7 +219,7 @@ func (r *sqliteUserRepository) List(ctx context.Context) ([]User, error) {
 
 	var users []User
 	for rows.Next() {
-		u, err := scanUserRow(rows)
+		u, err := scanUser(rows)
 		if err != nil {
 			return nil, fmt.Errorf("list users scan: %w", err)
 		}
@@ -291,7 +293,7 @@ func (r *sqliteUserRepository) Delete(ctx context.Context, id string) error {
 }
 
 // scanUser scans a single *sql.Row into a User.
-func scanUser(row *sql.Row) (*User, error) {
+func scanUser(row rowScanner) (*User, error) {
 	var u User
 	var isActive int
 	var createdAt, updatedAt string
@@ -332,42 +334,6 @@ func scanUser(row *sql.Row) (*User, error) {
 }
 
 // scanUserRow scans a *sql.Rows (multi-row query) into a User.
-func scanUserRow(rows *sql.Rows) (*User, error) {
-	var u User
-	var isActive int
-	var createdAt, updatedAt string
-	var sigv4Key, sigv4Secret sql.NullString
-
-	err := rows.Scan(
-		&u.ID,
-		&u.DisplayName,
-		&u.AccessKeyID,
-		&u.SecretHash,
-		&sigv4Key,
-		&sigv4Secret,
-		&u.Role,
-		&isActive,
-		&createdAt,
-		&updatedAt,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("scan user row: %w", err)
-	}
-
-	u.SigV4AccessKeyID = sigv4Key.String
-	u.SigV4SecretKey = sigv4Secret.String
-	u.IsActive = isActive != 0
-	u.CreatedAt, err = parseTimestamp(createdAt)
-	if err != nil {
-		return nil, err
-	}
-	u.UpdatedAt, err = parseTimestamp(updatedAt)
-	if err != nil {
-		return nil, err
-	}
-
-	return &u, nil
-}
 
 // boolToInt converts a bool to SQLite's INTEGER representation.
 func boolToInt(b bool) int {

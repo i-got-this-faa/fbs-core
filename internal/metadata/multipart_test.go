@@ -642,3 +642,32 @@ func TestMultipartPartAdd_RejectedWhenClaimed(t *testing.T) {
 		t.Fatalf("expected ErrUploadAlreadyClaimed, got %v", err)
 	}
 }
+
+func TestCheckWritePreconditions(t *testing.T) {
+	t.Parallel()
+
+	stored := objectVersion{exists: true, etag: "abc"}
+	missing := objectVersion{}
+	tests := []struct {
+		name                 string
+		existing             objectVersion
+		ifMatch, ifNoneMatch string
+		want                 error
+	}{
+		{"no conditions, existing", stored, "", "", nil},
+		{"no conditions, missing", missing, "", "", nil},
+		{"if-match same etag", stored, `"abc"`, "", nil},
+		{"if-match star", stored, "*", "", nil},
+		{"if-match other etag", stored, "xyz", "", ErrPreconditionFailed},
+		{"if-match missing key", missing, "abc", "", ErrObjectNotFound},
+		{"if-none-match star, existing", stored, "", "*", ErrPreconditionFailed},
+		{"if-none-match star, missing", missing, "", "*", nil},
+		{"if-none-match same etag", stored, "", "abc", ErrPreconditionFailed},
+		{"if-none-match other etag", stored, "", "xyz", nil},
+	}
+	for _, tt := range tests {
+		if err := checkWritePreconditions(tt.existing, tt.ifMatch, tt.ifNoneMatch); !errors.Is(err, tt.want) {
+			t.Errorf("%s: err = %v, want %v", tt.name, err, tt.want)
+		}
+	}
+}

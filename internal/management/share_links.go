@@ -59,7 +59,7 @@ func (h *Handlers) CreateShareLink(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, errorCodeNotFound, "object not found")
 		return
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to load object")
+		h.internalError(w, r, "failed to load object", err)
 		return
 	}
 
@@ -85,7 +85,7 @@ func (h *Handlers) CreateShareLink(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, errorCodeConflict, "alias is already in use")
 		return
 	} else if err != nil {
-		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to create share link")
+		h.internalError(w, r, "failed to create share link", err)
 		return
 	}
 
@@ -96,7 +96,7 @@ func (h *Handlers) ListShareLinks(w http.ResponseWriter, r *http.Request) {
 	filter := metadata.ShareLinkListFilter{BucketName: strings.TrimSpace(r.URL.Query().Get("bucket"))}
 	links, err := h.ShareLinks.List(r.Context(), filter)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to list share links")
+		h.internalError(w, r, "failed to list share links", err)
 		return
 	}
 
@@ -114,7 +114,7 @@ func (h *Handlers) DeleteShareLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to delete share link")
+		h.internalError(w, r, "failed to delete share link", err)
 		return
 	}
 
@@ -160,7 +160,7 @@ func (h *Handlers) shareLinkCreatorID(w http.ResponseWriter, r *http.Request) (s
 		return "", false
 	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, errorCodeInternal, "failed to load user")
+		h.internalError(w, r, "failed to load user", err)
 		return "", false
 	}
 	return principal.UserID, true
