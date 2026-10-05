@@ -19,6 +19,9 @@ func RegisterAdminRoutes(r chi.Router, h *Handlers) {
 	r.Patch("/keys/{id}", h.PatchKey)
 	r.Delete("/keys/{id}", h.DeleteKey)
 	r.Get("/users/{userID}/grants", h.ListUserGrants)
+	r.Get("/share-links", h.ListShareLinks)
+	r.Post("/share-links", h.CreateShareLink)
+	r.Delete("/share-links/{code}", h.DeleteShareLink)
 }
 
 // RegisterGrantRoutes registers grant and ownership routes that allow

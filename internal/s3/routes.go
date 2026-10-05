@@ -33,3 +33,13 @@ func RegisterPublicReadRoutes(r chi.Router, h *ObjectHandlers) {
 	r.Get("/public/{bucket}/*", h.PublicReadObject)
 	r.Head("/public/{bucket}/*", h.PublicReadObject)
 }
+
+// RegisterShareLinkRoutes serves share links. The optional trailing segment
+// lets links carry a file name (for example /s/abc123/clip.mp4) that some
+// chat clients use when deciding how to embed media; it is ignored.
+func RegisterShareLinkRoutes(r chi.Router, h *ObjectHandlers) {
+	for _, pattern := range []string{"/s/{code}", "/s/{code}/*"} {
+		r.Get(pattern, h.ShareLinkReadObject)
+		r.Head(pattern, h.ShareLinkReadObject)
+	}
+}

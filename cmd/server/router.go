@@ -22,6 +22,7 @@ func newRouter(cfg config.Config, logger *slog.Logger, app *app) http.Handler {
 	s3AuthError := auth.LogInternalErrors(logger, writeS3AuthError)
 	return httpapi.NewRouter(cfg, logger, func(r chi.Router) {
 		s3.RegisterPublicReadRoutes(r, app.objects)
+		s3.RegisterShareLinkRoutes(r, app.objects)
 		setup.RegisterRoutes(r, app.setup)
 		r.Route("/api/management", func(managementRoutes chi.Router) {
 			managementRoutes.Use(auth.RequireAuthentication(app.authChain, managementAuthError))

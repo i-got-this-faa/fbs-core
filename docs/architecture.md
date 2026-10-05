@@ -37,6 +37,7 @@ The router always registers:
 - `GET /api/setup/status`
 - `POST /api/setup/bootstrap`
 - `GET|HEAD /public/{bucket}/{key}`
+- `GET|HEAD /s/{code}[/{filename}]` (share links; `s` cannot be a bucket name because buckets need at least 3 characters)
 - `/api/management/*`
 - S3 bucket and object routes at the root
 

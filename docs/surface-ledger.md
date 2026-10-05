@@ -37,6 +37,21 @@ Target behavior: object reads preserve the stored `Content-Type`, optionally ret
 | Tests | applies | `internal/s3`, `internal/publicread`, `internal/management`, `internal/http` | Cover binary GET/HEAD, stored MIME, safe headers, invalid input, signatures, and CORS exposure | `go test ./...`; `go vet ./...` | proved |
 | Documents | applies | `docs/s3-api.md`, `docs/management-api.md`, `docs/quickstart.md`, `docs/operations.md`, `docs/configuration.md` | Explain ordinary reads, safe response headers, forced downloads, and cross-origin header access | documentation review | proved |
 
+## Issue #34: share links
+
+Target behavior: admins create short, revocable `/s/{code}` links that serve an object directly, so chat apps embed media inline, without changing any S3 contract.
+
+| Surface | Applies | Evidence | Change | Check | State |
+|---|---|---|---|---|---|
+| Entry points | applies | `internal/s3/routes.go`; `internal/management/routes.go`; `cmd/server/app.go`; `cmd/server/router.go` | Add `GET`/`HEAD /s/{code}[/*]` and admin `GET`/`POST`/`DELETE /api/management/share-links` | focused tests; live server run | proved |
+| Clients | applies | Chat app unfurlers, browsers, video players, management dashboards; S3 clients unaffected | Serve bytes directly (no redirect) with stored `Content-Type`, `Range`, and conditional requests | Range/HEAD/304 tests; live curl | proved |
+| Providers | applies | `internal/metadata/share_link.go`; `internal/sharelink`; shared `serveObject` read path | New repository, crypto-random base62 codes, alias validation | metadata and sharelink tests | proved |
+| Contracts | applies | Migration 12 `share_links`; Management JSON; bucket name rules | `/s/` cannot shadow a bucket (names need 3+ characters); no S3 route, query, or header changes | CreateBucket `s` rejected; full suite | proved |
+| Reverse state | applies | Revocation, expiry, object delete/overwrite, bucket delete, creator deactivation | Links cascade with bucket/user rows, follow the key, and re-check creator access on every read | cascade, revoke, expiry, and access tests; live run | proved |
+| Connection modes | applies | Unauthenticated share reads; Bearer/SigV4 management; dev mode | Dev-mode principals without a user row get 403 on create | handler code path; full suite | proved |
+| Tests | applies | `internal/{metadata,s3,management,sharelink}`; `migrations` | Cover create/list/revoke, validation, serving, grant revocation, logged database failures, and lifecycle | `go test -race ./...`; `go vet ./...` | proved |
+| Documents | applies | `docs/management-api.md`, `docs/quickstart.md`, `docs/architecture.md`, `docs/s3-api.md`, `docs/storage-and-metadata.md`, `README.md` | Document API, serving semantics, caching, and S3 compatibility | documentation review | proved |
+
 ## Audit findings: grant batch atomicity, typed access vocabulary, and cleanup
 
 Target behavior: a failed batch grant request changes nothing; every management 500 is logged with its cause; roles, actions, upload states, and activity names are typed; duplicated and dead code is removed with no other behavior change.

@@ -102,6 +102,8 @@ Bucket names must:
 - Not contain `..`, `.-`, or `-.`.
 - Not be `public`, which is reserved for signed public read URLs.
 
+Share links are served from `/s/{code}`. That path cannot collide with a bucket, because `s` is shorter than the 3-character minimum, so share links need no reserved bucket name.
+
 ## Object Key Rules
 
 Object keys must:

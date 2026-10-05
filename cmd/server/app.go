@@ -49,6 +49,7 @@ func newApp(cfg config.Config, db *sql.DB, store storage.DiskEngine, logger *slo
 	grantRepo := metadata.NewGrantRepository(db)
 	activityRepo := metadata.NewActivityRepository(db)
 	multipartRepo := metadata.NewMultipartUploadRepository(db)
+	shareLinkRepo := metadata.NewShareLinkRepository(db)
 
 	return &app{
 		objects: &s3.ObjectHandlers{
@@ -63,6 +64,7 @@ func newApp(cfg config.Config, db *sql.DB, store storage.DiskEngine, logger *slo
 			S3CacheControl:   cfg.S3CacheControl,
 			PublicReadSigner: publicReadSigner,
 			MultipartUploads: multipartRepo,
+			ShareLinks:       shareLinkRepo,
 		},
 		management: &management.Handlers{
 			Management:       metadata.NewManagementRepository(db),
@@ -75,6 +77,7 @@ func newApp(cfg config.Config, db *sql.DB, store storage.DiskEngine, logger *slo
 			Config:           cfg,
 			PublicReadSigner: publicReadSigner,
 			Logger:           logger,
+			ShareLinks:       shareLinkRepo,
 		},
 		setup: &setup.Handlers{
 			Bootstrap: metadata.NewBootstrapRepository(db),

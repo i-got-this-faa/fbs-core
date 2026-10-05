@@ -96,6 +96,18 @@ Stores activity events:
 - `actor_user_id`
 - `created_at`
 
+### `share_links`
+
+Stores share links. Rows cascade when their bucket or creator is deleted.
+
+- `code` (primary key)
+- `bucket_name`
+- `object_key`
+- `response_content_disposition`
+- `created_by`
+- `expires_at` (`NULL` means no expiry)
+- `created_at`
+
 ## Disk Layout
 
 The storage engine resolves the configured data directory to an absolute path and creates:

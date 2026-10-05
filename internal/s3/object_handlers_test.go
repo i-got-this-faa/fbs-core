@@ -37,6 +37,7 @@ type objectTestEnv struct {
 	objects          metadata.ObjectRepository
 	multipartUploads metadata.MultipartUploadRepository
 	grants           metadata.GrantRepository
+	shareLinks       metadata.ShareLinkRepository
 	storage          storage.DiskEngine
 	sigv4            auth.SigV4Credentials
 	signer           *publicread.Signer
@@ -85,6 +86,7 @@ func newObjectTestEnv(t *testing.T) objectTestEnv {
 	}
 	multipartRepo := metadata.NewMultipartUploadRepository(db)
 	grantRepo := metadata.NewGrantRepository(db)
+	shareLinkRepo := metadata.NewShareLinkRepository(db)
 	handlers := &ObjectHandlers{
 		Users:            userRepo,
 		Buckets:          bucketRepo,
@@ -98,12 +100,14 @@ func newObjectTestEnv(t *testing.T) objectTestEnv {
 		Logger:           slog.New(slog.NewTextHandler(io.Discard, nil)),
 		S3CacheControl:   config.Default().S3CacheControl,
 		PublicReadSigner: signer,
+		ShareLinks:       shareLinkRepo,
 		MinPartSize:      1, // small value for testability
 	}
 
 	cfg := config.Default()
 	router := httpapi.NewRouter(cfg, nil, func(r chi.Router) {
 		RegisterPublicReadRoutes(r, handlers)
+		RegisterShareLinkRoutes(r, handlers)
 		r.Group(func(protected chi.Router) {
 			protected.Use(auth.RequireAuthentication(&auth.DevAuthenticator{}, func(w http.ResponseWriter, r *http.Request, err error) {
 				WriteS3Error(w, r, http.StatusForbidden, codeAccessDenied, messageAccessDenied)
@@ -120,6 +124,7 @@ func newObjectTestEnv(t *testing.T) objectTestEnv {
 		objects:          objectRepo,
 		multipartUploads: multipartRepo,
 		grants:           grantRepo,
+		shareLinks:       shareLinkRepo,
 		storage:          disk,
 		sigv4:            sigv4,
 		signer:           signer,

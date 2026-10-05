@@ -263,6 +263,79 @@ HEAD /public/{bucket}/{key}?expires={unix_seconds}&signature={hex_hmac}[&respons
 Public read URLs do not use Bearer or SigV4 auth. They require exactly one `expires` and `signature` parameter, and may include one `response-content-disposition` parameter. The signature covers that optional value.
 Public object GET and HEAD responses preserve the stored `Content-Type` and include `X-Content-Type-Options: nosniff`.
 
+## Share Links
+
+Share links are short, revocable URLs such as `https://storage.example.com/s/x7Kp2mQa9Z` that serve an object directly. They are an fbs extension, not part of the S3 API, and they do not need `FBS_PUBLIC_READ_SIGNING_SECRET`. These endpoints require the `admin` role.
+
+Create a share link:
+
+```http
+POST /api/management/share-links
+Content-Type: application/json
+
+{
+  "bucket": "videos",
+  "key": "2026/clip.mp4",
+  "alias": "clip-2026",
+  "expires_in_seconds": 604800,
+  "response_content_disposition": "inline; filename=\"clip.mp4\""
+}
+```
+
+- `bucket` and `key` are required, and the object must exist.
+- `alias` is optional. Without it, fbs generates a random 10-character base62 code. An alias must be 3–64 letters, digits, `-` or `_`, starting with a letter or digit. Aliases are easy to remember and therefore easy to guess, so use random codes for anything private. A taken alias returns `409`.
+- `expires_in_seconds` is optional. Without it, the link does not expire until revoked.
+- `response_content_disposition` is optional and is sent as `Content-Disposition` on every read.
+
+Response (`201`):
+
+```json
+{
+  "code": "clip-2026",
+  "url": "https://storage.example.com/s/clip-2026",
+  "bucket": "videos",
+  "key": "2026/clip.mp4",
+  "response_content_disposition": "inline; filename=\"clip.mp4\"",
+  "created_by": "user-id",
+  "expires_at": "2026-10-09T12:00:00Z",
+  "created_at": "2026-10-02T12:00:00Z"
+}
+```
+
+`expires_at` is `null` for links without an expiry.
+
+List share links, optionally for one bucket:
+
+```http
+GET /api/management/share-links[?bucket={bucket}]
+```
+
+Revoke a share link:
+
+```http
+DELETE /api/management/share-links/{code}
+```
+
+Share links are served from:
+
+```http
+GET  /s/{code}[/{filename}]
+HEAD /s/{code}[/{filename}]
+```
+
+The response is the object itself, not a redirect, so chat apps such as Discord unfurl it as direct media. It keeps the stored `Content-Type` and supports `Range` and conditional requests, which video players need for seeking. The optional trailing `{filename}` is ignored. It only lets a link end in a name like `clip.mp4`.
+
+Reads send `Cache-Control: public, max-age=0, must-revalidate`, so caches revalidate and revocation takes effect quickly. Services that already copied the media, such as Discord's media proxy, may keep showing it.
+
+A share link points at `bucket + key`, not at a fixed object version:
+
+- Overwriting the key makes the link serve the new content.
+- Deleting the object makes the link return `404`.
+- Deleting the bucket deletes its share links.
+- On every read, fbs checks that the link's creator is still an active user with read access to the object. Deactivating or deleting the creator disables their links.
+
+Unknown, expired, revoked, and unauthorized links all return `404` with `Cache-Control: no-store`, so codes cannot be probed.
+
 ## Keys
 
 List keys:
