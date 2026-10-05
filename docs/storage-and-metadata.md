@@ -70,6 +70,8 @@ Tracks multipart upload sessions:
 
 Valid statuses are `active`, `completing`, and `aborted`.
 
+Completion temporarily claims an active upload as `completing`. If a conditional completion fails, its metadata transaction rolls back and the claim returns to `active`, preserving the uploaded parts for retry or abort.
+
 ### `multipart_parts`
 
 Tracks uploaded parts:
