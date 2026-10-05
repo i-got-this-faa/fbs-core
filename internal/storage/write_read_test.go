@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -199,4 +200,42 @@ func (r *failingReader) Read(p []byte) (int, error) {
 	r.reads++
 	copy(p, "x")
 	return 1, nil
+}
+
+func TestWriteDurablyFailureLeavesNoFiles(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	tempPath := filepath.Join(dir, "object.tmp")
+	finalPath := filepath.Join(dir, "nested", "object")
+	fillErr := errors.New("client disconnected")
+
+	_, err := writeDurably(tempPath, finalPath, func(w io.Writer) (int64, error) {
+		if _, err := io.WriteString(w, "partial"); err != nil {
+			return 0, err
+		}
+		return 7, fillErr
+	})
+	if !errors.Is(err, fillErr) {
+		t.Fatalf("err = %v, want %v", err, fillErr)
+	}
+	for _, path := range []string{tempPath, finalPath} {
+		if _, statErr := os.Stat(path); !errors.Is(statErr, fs.ErrNotExist) {
+			t.Fatalf("%s exists after a failed write (stat err = %v)", path, statErr)
+		}
+	}
+
+	written, err := writeDurably(tempPath, finalPath, func(w io.Writer) (int64, error) {
+		n, err := io.WriteString(w, "complete")
+		return int64(n), err
+	})
+	if err != nil || written != 8 {
+		t.Fatalf("successful write = %d, %v", written, err)
+	}
+	if data, _ := os.ReadFile(finalPath); string(data) != "complete" {
+		t.Fatalf("final contents = %q", data)
+	}
+	if _, statErr := os.Stat(tempPath); !errors.Is(statErr, fs.ErrNotExist) {
+		t.Fatalf("temp file left after a successful write (stat err = %v)", statErr)
+	}
 }

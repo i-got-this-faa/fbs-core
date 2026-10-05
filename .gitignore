@@ -1,109 +1,35 @@
-# OS files
+# OS and editor files
 .DS_Store
 Thumbs.db
-
-# Editor/IDE
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# Logs
-*.log
-logs/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-# Environment/config
+# Environment and local agent state
 .env
 .env.*
 !.env.example
+agents
+.codex
 
-# Dependencies
-node_modules/
-vendor/
+# Go build and test output
+/server
+/main
+bin/
+*.test
+coverage.out
 
-# Build/output
-dist/
-build/
-out/
-target/
-coverage/
+# Local runtime state (default --db-path and --data-dir)
+*.db
+*.db-shm
+*.db-wal
+data/
 .tmp/
-temp/
-.cache/
-
-# Python
-__pycache__/
-*.py[cod]
-.venv/
-venv/
-.pytest_cache/
-.mypy_cache/
+*.log
 
 # s3-tests harness is tracked under compat/s3-tests/ (scripts, markers, checklists).
 # Ignore only local runtime state and bulky regenerable logs.
 compat/s3-tests/.workdir/
 compat/s3-tests/results/*.log
-
-# Java
-*.class
-*.jar
-*.war
-.gradle/
-
-# Go
-bin/
-*.test
-coverage.out
-/main
-
-# Local runtime state
-*.db
-*.db-shm
-*.db-wal
-data/
-
-# Rust
-target/
-Cargo.lock
-
-# Terraform
-.terraform/
-*.tfstate
-*.tfstate.*
-crash.log
-
-# AWS/SAM/CDK/Serverless
-.aws-sam/
-.cdk.out/
-.serverless/
-
-# Archives
-*.zip
-*.tar
-*.gz
-*.7z
-
-# TeX/LaTeX artifacts
-*.aux
-*.bbl
-*.bcf
-*.blg
-*.fdb_latexmk
-*.fls
-*.lof
-*.log
-*.lot
-*.out
-*.run.xml
-*.synctex.gz
-*.toc
-
-
-agents
-.codex
-/server

@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 	"uuid"
+
+	"github.com/i-got-this-faa/fbs/internal/iam"
 )
 
 func uniqueTestUser(displayName string) *User {
@@ -84,10 +86,10 @@ func TestGrantCreateAndList(t *testing.T) {
 	}
 }
 
-func TestGrantCreateIdempotent(t *testing.T) {
-	t.Parallel()
+func newGrantBatchTestRepo(t *testing.T) (GrantRepository, *User, *User) {
+	t.Helper()
 
-	db, err := Open(t.TempDir() + "/grants-idem.db")
+	db, err := Open(t.TempDir() + "/grants-batch.db")
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
@@ -97,39 +99,87 @@ func TestGrantCreateIdempotent(t *testing.T) {
 	users := NewUserRepository(db)
 	owner := uniqueTestUser("Owner")
 	grantee := uniqueTestUser("Grantee")
-	if err := users.Create(ctx, owner); err != nil {
-		t.Fatalf("create owner: %v", err)
-	}
-	if err := users.Create(ctx, grantee); err != nil {
-		t.Fatalf("create grantee: %v", err)
+	for _, user := range []*User{owner, grantee} {
+		if err := users.Create(ctx, user); err != nil {
+			t.Fatalf("create user: %v", err)
+		}
 	}
 	if err := NewBucketRepository(db).Create(ctx, &Bucket{Name: "b", OwnerID: owner.ID, CreatedAt: time.Now().UTC()}); err != nil {
 		t.Fatalf("create bucket: %v", err)
 	}
+	return NewGrantRepository(db), owner, grantee
+}
 
-	grants := NewGrantRepository(db)
+func newBatchGrant(granteeID string, action iam.Action) Grant {
 	now := time.Now().UTC()
-	first := &Grant{
-		ID: uuid.New().String(), BucketName: "b", GranteeUserID: grantee.ID,
-		Action: "s3:ListBucket", IsActive: true, CreatedBy: owner.ID,
-		CreatedAt: now, UpdatedAt: now,
+	return Grant{
+		ID: uuid.New().String(), BucketName: "b", GranteeUserID: granteeID,
+		Action: action, IsActive: true, CreatedAt: now, UpdatedAt: now,
 	}
-	got, existed, err := grants.CreateIdempotent(ctx, first)
-	if err != nil || existed {
-		t.Fatalf("first: got=%+v existed=%v err=%v", got, existed, err)
+}
+
+func TestGrantCreateIdempotentBatch(t *testing.T) {
+	t.Parallel()
+
+	grants, _, grantee := newGrantBatchTestRepo(t)
+	ctx := context.Background()
+	existing := newBatchGrant(grantee.ID, iam.ActionListBucket)
+	if err := grants.Create(ctx, &existing); err != nil {
+		t.Fatalf("create existing: %v", err)
 	}
 
-	second := &Grant{
-		ID: uuid.New().String(), BucketName: "b", GranteeUserID: grantee.ID,
-		Action: "s3:ListBucket", IsActive: true, CreatedBy: owner.ID,
-		CreatedAt: now, UpdatedAt: now,
+	fresh := newBatchGrant(grantee.ID, iam.ActionGetObject)
+	results, err := grants.CreateIdempotentBatch(ctx, []Grant{newBatchGrant(grantee.ID, iam.ActionListBucket), fresh})
+	if err != nil {
+		t.Fatalf("batch: %v", err)
 	}
-	got, existed, err = grants.CreateIdempotent(ctx, second)
-	if err != nil || !existed {
-		t.Fatalf("second: got=%+v existed=%v err=%v", got, existed, err)
+	if len(results) != 2 {
+		t.Fatalf("results = %d, want 2", len(results))
 	}
-	if got.ID != first.ID {
-		t.Fatalf("id = %s, want %s", got.ID, first.ID)
+	if !results[0].Existed || results[0].Grant.ID != existing.ID {
+		t.Fatalf("duplicate result = %+v, want existing grant %s", results[0], existing.ID)
+	}
+	if results[1].Existed || results[1].Grant.ID != fresh.ID {
+		t.Fatalf("new result = %+v, want inserted grant %s", results[1], fresh.ID)
+	}
+	if _, err := grants.GetByID(ctx, fresh.ID); err != nil {
+		t.Fatalf("inserted grant not stored: %v", err)
+	}
+}
+
+// A failed batch must leave every grant, including pre-existing ones, as it was.
+func TestGrantCreateIdempotentBatchIsAtomic(t *testing.T) {
+	t.Parallel()
+
+	grants, _, grantee := newGrantBatchTestRepo(t)
+	ctx := context.Background()
+	existing := newBatchGrant(grantee.ID, iam.ActionGetObject)
+	if err := grants.Create(ctx, &existing); err != nil {
+		t.Fatalf("create existing: %v", err)
+	}
+
+	fresh := newBatchGrant(grantee.ID, iam.ActionListBucket)
+	unknownGrantee := newBatchGrant("missing-user", iam.ActionPutObject)
+	_, err := grants.CreateIdempotentBatch(ctx, []Grant{newBatchGrant(grantee.ID, iam.ActionGetObject), fresh, unknownGrantee})
+	if err == nil {
+		t.Fatal("batch with an unknown grantee must fail")
+	}
+
+	if _, err := grants.GetByID(ctx, existing.ID); err != nil {
+		t.Fatalf("pre-existing grant was removed: %v", err)
+	}
+	if _, err := grants.GetByID(ctx, fresh.ID); !errors.Is(err, ErrGrantNotFound) {
+		t.Fatalf("grant from failed batch was committed: err = %v", err)
+	}
+}
+
+func TestGrantCreateIdempotentBatchRejectsNonGrantableAction(t *testing.T) {
+	t.Parallel()
+
+	grants, _, grantee := newGrantBatchTestRepo(t)
+	_, err := grants.CreateIdempotentBatch(context.Background(), []Grant{newBatchGrant(grantee.ID, iam.ActionDeleteBucket)})
+	if !errors.Is(err, ErrInvalidGrantAction) {
+		t.Fatalf("err = %v, want ErrInvalidGrantAction", err)
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/i-got-this-faa/fbs/internal/auth"
+	"github.com/i-got-this-faa/fbs/internal/iam"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
 )
 
@@ -66,7 +67,7 @@ func (h *ObjectHandlers) ListBuckets(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ObjectHandlers) listBucketsForPrincipal(r *http.Request, principal auth.Principal) ([]metadata.Bucket, error) {
-	if principal.Role == "admin" {
+	if principal.Role == iam.RoleAdmin {
 		return h.Buckets.List(r.Context())
 	}
 

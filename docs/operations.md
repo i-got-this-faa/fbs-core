@@ -129,6 +129,10 @@ Dev mode requires a localhost-only bind address. Use `--http-addr 127.0.0.1:9000
 
 The credentials are valid but the user is inactive or does not have `admin` role. Use an admin key to list or patch users.
 
+### Management API returns 500
+
+The response body is generic on purpose. The server log has an `ERROR` line with the same message, the request `method` and `path`, and the underlying `error`. Search the log for the message from the response body.
+
 ### S3 SigV4 requests fail
 
 Check:

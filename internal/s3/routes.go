@@ -5,7 +5,7 @@ import "github.com/go-chi/chi/v5"
 func RegisterBucketRoutes(r chi.Router, h *ObjectHandlers) {
 	r.Get("/", h.ListBuckets)
 	// Multi-object delete is POST /{bucket}?delete per the S3 API (boto3/aws-cli).
-	// DELETE /{bucket}?delete is also accepted for older clients and in-repo tests.
+	// DELETE /{bucket}?delete is also accepted because fbs-web sends DeleteObjects that way.
 	r.Post("/{bucket}", h.DispatchBucketPost)
 	r.Put("/{bucket}", h.DispatchBucketPut)
 	r.Get("/{bucket}", h.DispatchBucketGet)

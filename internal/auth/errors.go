@@ -1,6 +1,9 @@
 package auth
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 var (
 	ErrNotApplicable      = errors.New("auth: not applicable")
@@ -13,3 +16,9 @@ var (
 	ErrUnauthorized       = errors.New("auth: unauthorized")
 	ErrForbidden          = errors.New("auth: forbidden")
 )
+
+// internalError marks cause as ErrInternal while keeping it in the chain, so a
+// responder can log why authentication failed without exposing it to clients.
+func internalError(cause error) error {
+	return fmt.Errorf("%w: %w", ErrInternal, cause)
+}

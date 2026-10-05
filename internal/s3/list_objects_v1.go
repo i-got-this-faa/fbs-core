@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/i-got-this-faa/fbs/internal/authz"
+	"github.com/i-got-this-faa/fbs/internal/iam"
 )
 
 type listBucketV1Result struct {
@@ -44,7 +44,7 @@ func (h *ObjectHandlers) ListObjectsV1(w http.ResponseWriter, r *http.Request) {
 		WriteS3Error(w, r, http.StatusBadRequest, codeInvalidRequest, messageInvalidRequest)
 		return
 	}
-	if !h.ensureBucketAction(w, r, bucketName, authz.ActionListBucket, "", params.prefix) {
+	if !h.ensureBucketAction(w, r, bucketName, iam.ActionListBucket, "", params.prefix) {
 		return
 	}
 

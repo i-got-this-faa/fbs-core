@@ -4,7 +4,7 @@ import (
 	"encoding/xml"
 	"net/http"
 
-	"github.com/i-got-this-faa/fbs/internal/authz"
+	"github.com/i-got-this-faa/fbs/internal/iam"
 )
 
 type locationConstraintResult struct {
@@ -15,7 +15,7 @@ type locationConstraintResult struct {
 
 func (h *ObjectHandlers) GetBucketLocation(w http.ResponseWriter, r *http.Request) {
 	bucketName := chiBucketParam(r)
-	if !h.ensureBucketAction(w, r, bucketName, authz.ActionListBucket, "", "") {
+	if !h.ensureBucketAction(w, r, bucketName, iam.ActionListBucket, "", "") {
 		return
 	}
 

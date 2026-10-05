@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/i-got-this-faa/fbs/internal/authz"
+	"github.com/i-got-this-faa/fbs/internal/iam"
 	"github.com/i-got-this-faa/fbs/internal/metadata"
 	"github.com/i-got-this-faa/fbs/internal/storage"
 )
@@ -18,7 +18,7 @@ func (h *ObjectHandlers) loadObjectForRead(w http.ResponseWriter, r *http.Reques
 		WriteS3Error(w, r, http.StatusBadRequest, codeInvalidRequest, messageInvalidRequest)
 		return nil, false
 	}
-	if !h.ensureBucketAction(w, r, bucketName, authz.ActionGetObject, key, "") {
+	if !h.ensureBucketAction(w, r, bucketName, iam.ActionGetObject, key, "") {
 		return nil, false
 	}
 
